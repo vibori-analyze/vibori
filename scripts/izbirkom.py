@@ -34,20 +34,21 @@ def canonical(u):
 def vrn(u):return (parse_qs(urlparse(u).query).get('vrn')or[None])[0]
 def number(s):
  m=re.search(r'(?<!\d)(\d[\d\s ]*)(?!\d)',s);return int(re.sub(r'\D','',m.group(1))) if m else None
-def fetch(url,cfg,raw):
+def fetch(url,cfg,raw,emit):
  path=raw/(hashlib.sha256(url.encode()).hexdigest()+'.html')
- if path.exists():return path.read_text(errors='replace')
+ if path.exists():
+  emit('cached',url=url,file=str(path));return path.read_text(errors='replace')
  req=Request(url,headers={'User-Agent':cfg['request']['user_agent'],'Accept':'text/html,application/xhtml+xml'})
- last=None
  for attempt in range(cfg['request'].get('retries',1)):
   try:
+   emit('fetch',url=url,attempt=attempt+1,retries=cfg['request'].get('retries',1))
    with urlopen(req,timeout=cfg['request']['timeout_seconds']) as r: body=r.read().decode(r.headers.get_content_charset()or'utf-8',errors='replace')
    break
   except Exception as error:
-   last=error
    if attempt+1 == cfg['request'].get('retries',1): raise
+   emit('retry',url=url,attempt=attempt+1,error=str(error))
    sleep(cfg['request'].get('retry_delay_seconds',2)*(attempt+1))
- path.write_text(body);path.with_suffix('.source.json').write_text(json.dumps({'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'ЦИК России / ГАС «Выборы»'},ensure_ascii=False,indent=2)+'\n');sleep(cfg['request']['delay_seconds']);return body
+ path.write_text(body);path.with_suffix('.source.json').write_text(json.dumps({'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'ЦИК России / ГАС «Выборы»'},ensure_ascii=False,indent=2)+'\n');emit('saved',url=url,file=str(path));sleep(cfg['request']['delay_seconds']);return body
 def protocol(page,url,campaign,cfg):
  text=clean(' '.join(page.text));m=re.search(cfg['protocol']['precinct_pattern'],text,re.I)
  if not m:return None
@@ -66,12 +67,15 @@ def protocol(page,url,campaign,cfg):
  return {'standard':'vibori-election-result/v1','source':{'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'ЦИК России / ГАС «Выборы»'},'election':{'id':eid,'name':campaign['name'],'country':'RU','date':'1970-01-01','scope':'other'},'unit':{'id':f'{eid}-uik-{n}','name':f'УИК №{n}','number':n,'kind':'precinct','administrative_path':[{'id':'ru','name':'Российская Федерация','kind':'national'},{'id':'region-'+stable(reg),'name':reg,'kind':'region'},{'id':'tik-'+stable(tik),'name':tik,'kind':'territorial_commission'}]},'ballot':{'id':'main','title':campaign['name'],'kind':'other'},'turnout':turnout,'results':[{'entity':{'id':'candidate-'+stable(name),'name':name,'type':'candidate'},'votes':votes}for name,votes in entities]}
 def main():
  a=ArgumentParser();a.add_argument('--config',default='config/izbirkom.json');a.add_argument('--out',default='public/data');a.add_argument('--raw',default='raw/izbirkom');a.add_argument('--max-pages',type=int);a.add_argument('--only-vrn');a.add_argument('--dry-run',action='store_true');args=a.parse_args();cfg=json.loads(Path(args.config).read_text());raw=Path(args.raw);raw.mkdir(parents=True,exist_ok=True);out=Path(args.out);limit=args.max_pages or cfg['discovery']['max_pages'];queue=[canonical(x)for x in cfg['seed_urls']];seen=set();campaigns={};imported=0
+ def emit(event,**data): print(json.dumps({'event':event,**data},ensure_ascii=False),flush=True)
+ emit('start',limit=limit,seeds=len(queue),dry_run=args.dry_run)
  while queue and len(seen)<limit:
   url=queue.pop(0)
   if url in seen or(args.only_vrn and vrn(url)!=args.only_vrn):continue
   seen.add(url)
-  try:body=fetch(url,cfg,raw)
-  except Exception as e:print(json.dumps({'event':'fetch_error','url':url,'error':str(e)},ensure_ascii=False));continue
+  if len(seen)==1 or len(seen)%cfg['discovery'].get('progress_every_pages',25)==0: emit('progress',pages=len(seen),queued=len(queue),campaigns=len(campaigns),protocols=imported,limit=limit)
+  try:body=fetch(url,cfg,raw,emit)
+  except Exception as e:emit('fetch_error',url=url,error=str(e));continue
   page=Page();page.feed(body);key=vrn(url);text=clean(' '.join(page.text))
   if key:campaigns.setdefault(key,{'id':'izbirkom-'+key,'name':text[:cfg['discovery']['campaign_title_length']]or'Кампания '+key})
   if key:
@@ -79,11 +83,11 @@ def main():
    if rec:
     target=out/rec['election']['id']/'precincts'/(rec['unit']['id']+'.json');target.parent.mkdir(parents=True,exist_ok=True)
     if not args.dry_run:target.write_text(json.dumps(rec,ensure_ascii=False,indent=2)+'\n')
-    imported+=1;print(json.dumps({'event':'protocol','file':str(target),'url':url},ensure_ascii=False))
+    imported+=1;emit('protocol',file=str(target),url=url,protocols=imported)
   for href in page.links:
    target=canonical(urljoin(url,href));host=urlparse(target).netloc
    if host in cfg['allowed_hosts'] and(len(queue)+len(seen)<limit)and(vrn(target)or re.search(cfg['discovery']['follow_pattern'],target)):queue.append(target)
  event={'event':'complete','pages':len(seen),'campaigns':len(campaigns),'protocols':imported,'next':'nix run .#build-index'}
  if not campaigns:event['warning']='Не получено ни одной страницы кампании: проверьте DNS/маршрут до www.izbirkom.ru или капчу ЦИК.'
- print(json.dumps(event,ensure_ascii=False))
+ print(json.dumps(event,ensure_ascii=False),flush=True)
 if __name__=='__main__':main()
