@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-const root = new URL('../public/data/', import.meta.url)
+const root = new URL(process.argv[2] ? `${process.cwd()}/${process.argv[2].replace(/^\.\//, '')}/` : '../public/data/', import.meta.url)
 const dirs = (await readdir(root, { withFileTypes: true })).filter(x => x.isDirectory()).map(x => x.name)
 const elections = []; const routes = ['/']
 for (const id of dirs) {
