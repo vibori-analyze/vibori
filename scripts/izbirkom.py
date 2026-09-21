@@ -38,7 +38,15 @@ def fetch(url,cfg,raw):
  path=raw/(hashlib.sha256(url.encode()).hexdigest()+'.html')
  if path.exists():return path.read_text(errors='replace')
  req=Request(url,headers={'User-Agent':cfg['request']['user_agent'],'Accept':'text/html,application/xhtml+xml'})
- with urlopen(req,timeout=cfg['request']['timeout_seconds']) as r: body=r.read().decode(r.headers.get_content_charset()or'utf-8',errors='replace')
+ last=None
+ for attempt in range(cfg['request'].get('retries',1)):
+  try:
+   with urlopen(req,timeout=cfg['request']['timeout_seconds']) as r: body=r.read().decode(r.headers.get_content_charset()or'utf-8',errors='replace')
+   break
+  except Exception as error:
+   last=error
+   if attempt+1 == cfg['request'].get('retries',1): raise
+   sleep(cfg['request'].get('retry_delay_seconds',2)*(attempt+1))
  path.write_text(body);path.with_suffix('.source.json').write_text(json.dumps({'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'ЦИК России / ГАС «Выборы»'},ensure_ascii=False,indent=2)+'\n');sleep(cfg['request']['delay_seconds']);return body
 def protocol(page,url,campaign,cfg):
  text=clean(' '.join(page.text));m=re.search(cfg['protocol']['precinct_pattern'],text,re.I)
@@ -75,5 +83,7 @@ def main():
   for href in page.links:
    target=canonical(urljoin(url,href));host=urlparse(target).netloc
    if host in cfg['allowed_hosts'] and(len(queue)+len(seen)<limit)and(vrn(target)or re.search(cfg['discovery']['follow_pattern'],target)):queue.append(target)
- print(json.dumps({'event':'complete','pages':len(seen),'campaigns':len(campaigns),'protocols':imported,'next':'npm run build:index'},ensure_ascii=False))
+ event={'event':'complete','pages':len(seen),'campaigns':len(campaigns),'protocols':imported,'next':'nix run .#build-index'}
+ if not campaigns:event['warning']='Не получено ни одной страницы кампании: проверьте DNS/маршрут до www.izbirkom.ru или капчу ЦИК.'
+ print(json.dumps(event,ensure_ascii=False))
 if __name__=='__main__':main()
