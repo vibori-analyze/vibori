@@ -1,0 +1,8 @@
+{
+  "allowed_hosts": ["www.izbirkom.ru", "izbirkom.ru", "www.vybory.izbirkom.ru", "vybory.izbirkom.ru"],
+  "seed_urls": ["https://www.izbirkom.ru/", "https://www.vybory.izbirkom.ru/region/izbirkom"],
+  "request": {"user_agent": "Vibori public-results importer/1.0 (+https://github.com/your-org/vibori)", "delay_seconds": 1.2, "timeout_seconds": 30},
+  "discovery": {"max_pages": 30000, "follow_pattern": "(?:izbirkom|vybory|vrn=|action=show)", "campaign_title_length": 180},
+  "protocol": {"precinct_pattern": "УИК\\s*№?\\s*(\\d+)", "region_pattern": "(?:Республика|край|область|город)\\s+[А-ЯЁ][А-Яа-яЁё -]+", "tik_pattern": "ТИК[^,.]{0,100}", "minimum_entities": 2,
+    "turnout_aliases": {"registered":["число избирателей, внесенных", "зарегистрированн\\w+ избирател"], "issued":["число бюллетеней, выданных", "принял\\w+ участие"], "valid":["число действительных бюллетеней", "действительных голос"], "invalid":["число недействительных бюллетеней", "недействительных голос"]}}
+}
