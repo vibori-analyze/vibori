@@ -1,0 +1,13 @@
+{
+  "name": "vibori",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "build:index": "node scripts/build-index.mjs",
+    "import:izbirkom": "python3 scripts/izbirkom.py"
+  },
+  "dependencies": { "nuxt": "^3.17.7", "vue": "^3.5.18" },
+  "devDependencies": {}
+}

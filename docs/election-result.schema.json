@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibori.example/schema/election-result-1.json",
+  "title": "Vibori Election Result v1",
+  "description": "Один файл — один низовой избирательный участок и один бюллетень. Подходит для любой страны и систем списков/округов.",
+  "type": "object",
+  "required": ["standard", "election", "unit", "ballot", "turnout", "results"],
+  "properties": {
+    "standard": { "const": "vibori-election-result/v1" },
+    "source": { "type": "object", "properties": { "url": {"format":"uri"}, "retrieved_at": {"format":"date-time"}, "publisher": {"type":"string"} } },
+    "election": { "type": "object", "required": ["id", "name", "country", "date"], "properties": { "id":{"type":"string"}, "name":{"type":"string"}, "country":{"type":"string", "description":"ISO 3166-1 alpha-2"}, "date":{"format":"date"}, "scope":{"enum":["national","regional","municipal","other"]} } },
+    "unit": { "type": "object", "required": ["id", "name", "kind"], "properties": { "id":{"type":"string"}, "name":{"type":"string"}, "number":{"type":"string"}, "kind":{"enum":["precinct","district","municipality","region","national","other"]}, "administrative_path":{"type":"array", "items":{"type":"object", "required":["id","name","kind"], "properties":{"id":{"type":"string"},"name":{"type":"string"},"kind":{"type":"string"}}}} } },
+    "ballot": { "type":"object", "required":["id","kind","title"], "properties": { "id":{"type":"string"}, "title":{"type":"string"}, "kind":{"enum":["party_list","single_member","referendum","ranked","other"]}, "district":{"type":"object", "properties":{"id":{"type":"string"},"name":{"type":"string"}}} } },
+    "turnout": { "type":"object", "required":["registered","issued","valid","invalid"], "properties":{"registered":{"type":"integer","minimum":0},"issued":{"type":"integer","minimum":0},"valid":{"type":"integer","minimum":0},"invalid":{"type":"integer","minimum":0}} },
+    "results": { "type":"array", "items": { "type":"object", "required":["entity","votes"], "properties": { "entity":{"type":"object","required":["id","name","type"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"type":{"enum":["candidate","party","option","other"]},"party_id":{"type":"string"}}}, "votes":{"type":"integer","minimum":0} } } }
+  }
+}
