@@ -1,0 +1,6 @@
+<script setup lang="ts">
+const id = computed(() => String(useRoute().params.id)); const { data: c } = await useAsyncData('catalog', catalog)
+const rows = ref<any[]>([]); const entity = ref<any>();
+watchEffect(async () => { if (!c.value) return; const all:any[]=[]; for (const e of c.value.elections) { const files = await resultsFor(e.id); const a=aggregate(files); const r=a.rows.find((x:any)=>x.id===id.value); if(r){ entity.value=r; all.push({election:e, votes:r.votes, valid:a.turnout.valid, percent:pct(r.votes,a.turnout.valid), units:files.length}) } } rows.value=all.sort((a,b)=>b.percent-a.percent) })
+</script>
+<template><NuxtLink class="back" to="/">← Все голосования</NuxtLink><section class="result-title"><p class="eyebrow">{{entity?.type === 'party' ? 'ПАРТИЯ / ИЗБИРАТЕЛЬНОЕ ОБЪЕДИНЕНИЕ' : 'КАНДИДАТ'}}</p><h1>{{entity?.name || 'Загрузка…'}}</h1><p>Итоги на наиболее высоком доступном уровне каждого голосования.</p></section><div class="table-wrap"><table><thead><tr><th>Голосование</th><th>Голоса</th><th>Доля</th><th>УИК</th></tr></thead><tbody><tr v-for="r in rows" :key="r.election.id"><td><NuxtLink :to="`/result/${r.election.id}/${r.election.national_id}`" class="entity">{{r.election.name}}</NuxtLink></td><td>{{r.votes.toLocaleString('ru-RU')}}</td><td><b>{{r.percent.toFixed(2)}}%</b></td><td>{{r.units}}</td></tr></tbody></table></div></template>
