@@ -45,6 +45,21 @@ function clustersFor(points, entityCount) {
   return clusters.map(cluster => [...cluster.values()])
 }
 
+function histogramFor(points, entityCount) {
+  const histograms = Array.from({ length: entityCount }, () => new Map())
+  for (const [turnout, , results] of points) {
+    const bin = Math.round(turnout / 10) * 10
+    for (let index = 0; index < results.length; index += 2) {
+      const entity = results[index]
+      const current = histograms[entity].get(bin) || [bin, 0, 0]
+      current[1] += results[index + 1]
+      current[2] += 1
+      histograms[entity].set(bin, current)
+    }
+  }
+  return histograms.map(histogram => [...histogram.values()].sort((left, right) => left[0] - right[0]))
+}
+
 for (const id of electionIds) {
   const precinctNames = await jsonNames(id, 'precincts')
   if (!precinctNames.length) continue
@@ -145,6 +160,7 @@ for (const id of electionIds) {
   await writeFile(new URL('national.json', analysisRoot), `${JSON.stringify({
     standard: 'vibori-chart-analysis/v2', entities: entityList,
     clusters: clustersFor(points, entityList.length),
+    absolute: histogramFor(points, entityList.length),
   })}\n`)
 
   const regional = new Map()
@@ -162,6 +178,7 @@ for (const id of electionIds) {
     await writeFile(new URL(`${regionId}.json`, analysisRoot), `${JSON.stringify({
       standard: 'vibori-chart-analysis/v2', points: entry.points, units: entry.units,
       clusters: clustersFor(entry.points, entityList.length),
+      absolute: histogramFor(entry.points, entityList.length),
     })}\n`)
   }
 

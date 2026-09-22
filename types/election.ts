@@ -113,6 +113,7 @@ export interface NationalChartAnalysis {
   standard: 'vibori-chart-analysis/v2'
   entities: ElectionEntity[]
   clusters: Array<Array<[turnout: number, votes: number, count: number]>>
+  absolute: Array<Array<[turnout: number, votes: number, count: number]>>
 }
 
 export interface RegionalChartAnalysis {
@@ -120,6 +121,7 @@ export interface RegionalChartAnalysis {
   points: Array<[turnout: number, valid: number, results: number[]]>
   units: Record<string, number[]>
   clusters: Array<Array<[turnout: number, votes: number, count: number]>>
+  absolute: Array<Array<[turnout: number, votes: number, count: number]>>
 }
 
 export interface ElectionCatalog {

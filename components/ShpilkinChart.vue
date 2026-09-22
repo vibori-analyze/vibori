@@ -4,7 +4,7 @@ import type { ElectionEntity, NationalChartAnalysis, RegionalChartAnalysis } fro
 const props = defineProps<{ analysis: NationalChartAnalysis | RegionalChartAnalysis, entities: ElectionEntity[], unitId: string }>()
 const palette = ['#d6452e', '#356ae6', '#1b9467', '#d78418', '#8b52c7', '#bf3f79', '#138a9b', '#766f2c']
 const selected = ref('')
-const canvas = ref<HTMLCanvasElement>(); const tooltip = ref('')
+const canvas = ref<HTMLCanvasElement>(); const absoluteCanvas = ref<HTMLCanvasElement>(); const tooltip = ref('')
 const entities = computed(() => props.entities.map((entity, index) => ({ ...entity, color: palette[index % palette.length] })))
 const entityIndex = computed(() => entities.value.findIndex(entity => entity.id === selected.value))
 const national = computed(() => 'entities' in props.analysis)
@@ -22,6 +22,12 @@ const points = computed<Point[]>(() => {
     for (let result = 0; result < results.length; result += 2) if (results[result] === entity) return [{ turnout: turnout / 100, share: valid ? results[result + 1] / valid * 100 : 0, count: 1 }]
     return []
   })
+})
+const absolutePoints = computed(() => {
+  const entity = entityIndex.value
+  if (entity < 0) return []
+  const series = props.analysis.absolute[entity] || []
+  return series.map(([turnout, votes, count]) => ({ turnout: turnout / 100, votes, count }))
 })
 function draw(): void {
   const element = canvas.value; const context = element?.getContext('2d'); if (!element || !context) return
@@ -41,6 +47,17 @@ function nearest(event: MouseEvent): void {
   for (const point of points.value) { const px = left + point.turnout / 100 * (element.width - left - right); const py = element.height - bottom - point.share / maxShare * (element.height - top - bottom); const next = (px - x) ** 2 + (py - y) ** 2; if (next < distance) { hit = point; distance = next } }
   tooltip.value = hit && distance < 900 ? `Явка ${hit.turnout.toFixed(1)}% · доля ${hit.share.toFixed(2)}%${hit.count > 1 ? ` · ${hit.count} УИК` : ''}` : ''
 }
-watch(points, () => nextTick(draw), { flush: 'post' }); onMounted(draw)
+function drawAbsolute(): void {
+  const element = absoluteCanvas.value; const context = element?.getContext('2d'); if (!element || !context) return
+  const { width, height } = element; const left = 48; const right = 16; const top = 14; const bottom = 34
+  const maxVotes = Math.max(...absolutePoints.value.map(point => point.votes), 1); const color = entities.value[entityIndex.value]?.color || palette[0]
+  context.clearRect(0, 0, width, height); context.font = '11px Manrope, sans-serif'; context.strokeStyle = '#51524c'; context.fillStyle = '#aaa69e'
+  for (let step = 0; step <= 4; step += 1) { const y = top + (height - top - bottom) * step / 4; context.beginPath(); context.moveTo(left, y); context.lineTo(width - right, y); context.stroke(); context.fillText(Math.round(maxVotes * (4 - step) / 4).toLocaleString('ru-RU'), 0, y + 4) }
+  for (let step = 0; step <= 5; step += 1) context.fillText(`${step * 20}%`, left + (width - left - right) * step / 5 - 10, height - 12)
+  context.fillStyle = color; context.globalAlpha = .86
+  for (const point of absolutePoints.value) { const x = left + point.turnout / 100 * (width - left - right); const y = height - bottom - point.votes / maxVotes * (height - top - bottom); context.beginPath(); context.arc(x, y, Math.min(7, 1.5 + Math.sqrt(point.count)), 0, Math.PI * 2); context.fill() }
+  context.globalAlpha = 1
+}
+watch([points, absolutePoints], () => nextTick(() => { draw(); drawAbsolute() }), { flush: 'post' }); onMounted(() => { draw(); drawAbsolute() })
 </script>
-<template><section class="shpilkin-chart"><div class="chart-head"><div><span class="eyebrow">АНАЛИЗ УИК</span><h3>Метод Шпилькина</h3></div><select v-model="selected"><option v-for="entity in entities" :key="entity.id" :value="entity.id">{{ entity.name }}</option></select></div><p class="chart-subtitle">X — явка, Y — доля действительных голосов выбранного кандидата или списка.</p><canvas ref="canvas" width="960" height="420" @mousemove="nearest" @mouseleave="tooltip = ''" /><p class="chart-note">{{ tooltip || 'Каждая точка — УИК; близкие точки на крупных выборках сгруппированы сервером.' }}</p><div class="chart-legend"><span v-for="entity in entities" :key="entity.id"><i :style="{ background: entity.color }" />{{ entity.name }}</span></div></section></template>
+<template><section class="shpilkin-chart"><div class="chart-head"><div><span class="eyebrow">АНАЛИЗ УИК</span><h3>Метод Шпилькина</h3></div><select v-model="selected"><option v-for="entity in entities" :key="entity.id" :value="entity.id">{{ entity.name }}</option></select></div><p class="chart-subtitle">Явка (%) / доля голосов (%) — облако УИК.</p><canvas ref="canvas" width="960" height="320" @mousemove="nearest" @mouseleave="tooltip = ''" /><p class="chart-note">{{ tooltip || 'Близкие УИК сгруппированы сервером.' }}</p><p class="chart-subtitle">Явка (%) / абсолютное число голосов — УИК суммированы по интервалам явки 0,1%.</p><canvas ref="absoluteCanvas" width="960" height="320" /><div class="chart-legend"><span v-for="entity in entities" :key="entity.id"><i :style="{ background: entity.color }" />{{ entity.name }}</span></div></section></template>
