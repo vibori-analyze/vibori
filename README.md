@@ -16,6 +16,12 @@ nix run .#generate                        # static site: ./dist
 
 Publish `.output/public` for GitHub Pages. Set `NUXT_APP_BASE_URL=/repository-name/` before building when the project is hosted below the domain root.
 
+## Deployment
+
+The source lives in `vibori-analyze/vibori`. The separate `vibori-analyze/vibori-analyze.github.io` repository builds it and publishes the generated site at <https://vibori-analyze.github.io/>. Its workflow checks for source updates every hour and can also be run manually.
+
+Run the **Build and deploy** workflow in the Pages repository when a rebuild is needed immediately.
+
 ## Data
 
 The only service input format is [docs/election-result.schema.json](docs/election-result.schema.json). Store each precinct file at `public/data/<election-id>/precincts/*.json` and official higher-level protocols at `public/data/<election-id>/aggregates/*.json`. Both use exactly the same contract. `scripts/build-index.mjs` produces `public/data/index.json` and derives territorial commissions and regions from `administrative_path`.
