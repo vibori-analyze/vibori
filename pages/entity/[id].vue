@@ -21,8 +21,8 @@ watchEffect(async () => {
 
   const collected: EntityElectionResult[] = []
   for (const election of catalogData.value.elections) {
-    const files = await topLevelResultsFor(await electionCatalog(election.id))
-    const total = aggregate(files)
+    const { official, files } = await resultBundleFor(election.id, election.national_id)
+    const total = aggregate(official ? [official] : files)
     const result = total.rows.find(row => row.id === id.value)
     if (result) {
       entity.value = result

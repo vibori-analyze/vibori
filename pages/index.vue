@@ -13,10 +13,13 @@ watchEffect(() => {
 
 const selected = ref<ElectionCatalogDetail | null>(null)
 const selectedError = ref<Error | null>(null)
-const precinctLimit = ref(500)
+const precinctPageNumber = ref(0)
+const precincts = ref<CatalogPrecinct[]>([])
+const precinctsLoading = ref(false)
 
 watch(electionId, async (id) => {
-  precinctLimit.value = 500
+  precinctPageNumber.value = 0
+  precincts.value = []
   selected.value = null
   selectedError.value = null
   if (!id) {
@@ -28,6 +31,17 @@ watch(electionId, async (id) => {
     selectedError.value = error instanceof Error ? error : new Error(String(error))
   }
 })
+
+async function loadPrecinctPage(page = precinctPageNumber.value): Promise<void> {
+  if (!electionId.value || !selected.value || precinctsLoading.value) return
+  precinctsLoading.value = true
+  try {
+    precincts.value = await precinctPage(electionId.value, page)
+    precinctPageNumber.value = page
+  } finally {
+    precinctsLoading.value = false
+  }
+}
 
 function resultLink(
   election: CatalogElection | ElectionCatalogDetail,
@@ -97,7 +111,7 @@ function resultLink(
             </NuxtLink>
           </div>
         </details>
-        <details>
+        <details @toggle="event => (event.target as HTMLDetailsElement).open && !precincts.length && loadPrecinctPage()">
           <summary>
             <b>Территориальные комиссии</b><span>{{ selected.tiks.length }}</span>
           </summary>
@@ -117,7 +131,7 @@ function resultLink(
           </summary>
           <div class="branches precincts">
             <NuxtLink
-              v-for="precinct in selected.precincts.slice(0, precinctLimit)"
+              v-for="precinct in precincts"
               :key="precinct.id"
               :to="resultLink(selected, precinct)"
             >
@@ -126,13 +140,12 @@ function resultLink(
               <small>{{ precinct.region }}</small>
             </NuxtLink>
           </div>
-          <button
-            v-if="precinctLimit < selected.precincts.length"
-            type="button"
-            @click="precinctLimit += 500"
-          >
-            Показать ещё {{ Math.min(500, selected.precincts.length - precinctLimit) }} УИК
-          </button>
+          <p v-if="precinctsLoading" class="chart-note">Загрузка УИК…</p>
+          <div v-else-if="precincts.length" class="page-controls">
+            <button type="button" :disabled="!precinctPageNumber" @click="loadPrecinctPage(precinctPageNumber - 1)">← Назад</button>
+            <small>Страница {{ precinctPageNumber + 1 }} из {{ selected.precinct_pages }}</small>
+            <button type="button" :disabled="precinctPageNumber + 1 >= selected.precinct_pages" @click="loadPrecinctPage(precinctPageNumber + 1)">Вперёд →</button>
+          </div>
         </details>
       </div>
       </template>

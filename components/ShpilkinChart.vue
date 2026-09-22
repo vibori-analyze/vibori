@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { ElectionCatalogDetail, PrecinctAnalysis } from '~/types/election'
+import type { ElectionEntity, NationalChartAnalysis, RegionalChartAnalysis } from '~/types/election'
 
 const props = defineProps<{
-  analysis: PrecinctAnalysis
-  election: ElectionCatalogDetail
+  analysis: NationalChartAnalysis | RegionalChartAnalysis
+  entities: ElectionEntity[]
   unitId: string
 }>()
 
@@ -12,21 +12,16 @@ const selected = ref('')
 const canvas = ref<HTMLCanvasElement>()
 const tooltip = ref('')
 
-const entityIndex = computed(() => props.analysis.entities.findIndex(entity => entity.id === selected.value))
-const entities = computed(() => props.analysis.entities.map((entity, index) => ({
+const chartEntities = computed(() => props.entities.map((entity, index) => ({
   ...entity,
   color: palette[index % palette.length],
 })))
-const visiblePrecincts = computed(() => new Set(
-  props.election.precincts
-    .filter(precinct => precinct.id === props.unitId || precinct.path_ids.includes(props.unitId))
-    .map(precinct => precinct.source_index),
-))
-const isNational = computed(() => props.unitId === props.election.national_id)
+const entityIndex = computed(() => chartEntities.value.findIndex(entity => entity.id === selected.value))
+const isNational = computed(() => 'entities' in props.analysis)
 
 watchEffect(() => {
-  if (!selected.value && entities.value[0]) {
-    selected.value = entities.value[0].id
+  if (!selected.value && chartEntities.value[0]) {
+    selected.value = chartEntities.value[0].id
   }
 })
 
@@ -56,17 +51,20 @@ const points = computed<Point[]>(() => {
     return []
   }
   if (isNational.value) {
-    return props.analysis.national_clusters[index].map(([turnout, votes, count]) => ({
+    return props.analysis.clusters[index].map(([turnout, votes, count]) => ({
       turnout: turnout / 100,
       votes,
       count,
     }))
   }
+  const analysis = props.analysis as RegionalChartAnalysis
+  if (props.unitId === '') return []
+  if (!analysis.units[props.unitId]) {
+    return analysis.clusters[index].map(([turnout, votes, count]) => ({ turnout: turnout / 100, votes, count }))
+  }
   const raw: Point[] = []
-  for (const [sourceIndex, point] of props.analysis.points.entries()) {
-    if (!visiblePrecincts.value.has(sourceIndex)) {
-      continue
-    }
+  for (const sourceIndex of analysis.units[props.unitId]) {
+    const point = analysis.points[sourceIndex]
     for (let resultIndex = 0; resultIndex < point[1].length; resultIndex += 2) {
       if (point[1][resultIndex] === index) {
         raw.push({ turnout: point[0] / 100, votes: point[1][resultIndex + 1], count: 1 })
@@ -93,7 +91,7 @@ function draw(): void {
   const top = 14
   const bottom = 34
   const maxVotes = Math.max(...points.value.map(point => point.votes), 1)
-  const color = entities.value[entityIndex.value]?.color || palette[0]
+  const color = chartEntities.value[entityIndex.value]?.color || palette[0]
   context.clearRect(0, 0, width, height)
   context.font = '11px Manrope, sans-serif'
   context.fillStyle = '#aaa69e'
@@ -176,7 +174,7 @@ onMounted(draw)
     </p>
     <div class="chart-legend">
       <button
-        v-for="entity in entities"
+        v-for="entity in chartEntities"
         :key="entity.id"
         type="button"
         :class="{ active: entity.id === selected }"

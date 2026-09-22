@@ -1,43 +1,63 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const root = pathToFileURL(`${resolve(process.argv[2] || 'public/data')}/`)
+const pageSize = 500
 const directoryEntries = await readdir(root, { withFileTypes: true })
-const electionIds = directoryEntries
-  .filter(entry => entry.isDirectory())
-  .map(entry => entry.name)
+const electionIds = directoryEntries.filter(entry => entry.isDirectory()).map(entry => entry.name)
 const elections = []
 
 async function jsonNames(electionId, folderName) {
   try {
-    const folder = new URL(`${electionId}/${folderName}/`, root)
-    return (await readdir(folder)).filter(name => name.endsWith('.json'))
+    return (await readdir(new URL(`${electionId}/${folderName}/`, root))).filter(name => name.endsWith('.json'))
   } catch {
     return []
   }
 }
 
 async function readResult(electionId, folderName, name) {
-  const file = new URL(`${electionId}/${folderName}/${name}`, root)
-  return JSON.parse(await readFile(file, 'utf8'))
+  return JSON.parse(await readFile(new URL(`${electionId}/${folderName}/${name}`, root), 'utf8'))
+}
+
+function clustersFor(points, entityCount) {
+  const maximums = Array(entityCount).fill(0)
+  for (const [, results] of points) {
+    for (let index = 0; index < results.length; index += 2) {
+      maximums[results[index]] = Math.max(maximums[results[index]], results[index + 1])
+    }
+  }
+  const clusters = Array.from({ length: entityCount }, () => new Map())
+  for (const [turnout, results] of points) {
+    for (let index = 0; index < results.length; index += 2) {
+      const entity = results[index]
+      const step = Math.max(1, Math.ceil(maximums[entity] / 120))
+      const x = Math.round(turnout / 100) * 100
+      const y = Math.round(results[index + 1] / step) * step
+      const key = `${x}:${y}`
+      const current = clusters[entity].get(key) || [x, y, 0]
+      current[2] += 1
+      clusters[entity].set(key, current)
+    }
+  }
+  return clusters.map(cluster => [...cluster.values()])
 }
 
 for (const id of electionIds) {
   const precinctNames = await jsonNames(id, 'precincts')
-  if (!precinctNames.length) {
-    continue
-  }
+  if (!precinctNames.length) continue
 
   const first = await readResult(id, 'precincts', precinctNames[0])
   const grouped = new Map()
   const entities = new Map()
-  const analysisPoints = []
+  const rawPoints = []
+  const memberships = []
+  const precincts = []
+  const computed = new Map()
   const addGroup = (unit) => {
     const count = (grouped.get(unit.id)?.count || 0) + 1
-    grouped.set(unit.id, { ...unit, count })
+    grouped.set(unit.id, { id: unit.id, name: unit.name, kind: unit.kind, count })
   }
-  const precincts = []
 
   for (const name of precinctNames) {
     const data = await readResult(id, 'precincts', name)
@@ -46,133 +66,126 @@ for (const id of electionIds) {
       entities.set(result.entity.id, result.entity)
       results.push(result.entity.id, result.votes)
     }
-    analysisPoints.push([
-      data.turnout.registered
-        ? Math.round(data.turnout.issued / data.turnout.registered * 10000)
-        : 0,
+    const path = data.unit.administrative_path || []
+    const units = new Map(path.map(unit => [unit.kind, unit]))
+    rawPoints.push([
+      data.turnout.registered ? Math.round(data.turnout.issued / data.turnout.registered * 10000) : 0,
       results,
     ])
-    for (const unit of data.unit.administrative_path || []) {
-      if (['region', 'district', 'territorial_commission'].includes(unit.kind)) {
-        addGroup(unit)
-      }
-    }
-    precincts.push({
-      id: data.unit.id,
-      name: data.unit.name,
-      number: data.unit.number,
-      region: (data.unit.administrative_path || [])
-        .find(unit => unit.kind === 'region')?.name || '—',
-      file: `precincts/${name}`,
-      path_ids: (data.unit.administrative_path || []).map(unit => unit.id),
-      source_index: analysisPoints.length - 1,
+    memberships.push({
+      region: units.get('region')?.id,
+      tik: units.get('territorial_commission')?.id,
+      district: units.get('district')?.id,
     })
+    for (const unit of path) {
+      if (['region', 'district', 'territorial_commission'].includes(unit.kind)) addGroup(unit)
+      if (!['national', 'region', 'district', 'territorial_commission'].includes(unit.kind)) continue
+      const current = computed.get(unit.id) || {
+        unit: { ...unit, administrative_path: path.filter(entry => entry.id !== unit.id) },
+        turnout: { registered: 0, issued: 0, valid: 0, invalid: 0 }, votes: new Map(),
+      }
+      current.turnout.registered += data.turnout.registered
+      current.turnout.issued += data.turnout.issued
+      current.turnout.valid += data.turnout.valid
+      current.turnout.invalid += data.turnout.invalid
+      for (const result of data.results) {
+        current.votes.set(result.entity.id, (current.votes.get(result.entity.id) || 0) + result.votes)
+      }
+      computed.set(unit.id, current)
+    }
+    precincts.push({ id: data.unit.id, name: data.unit.name, number: data.unit.number, region: units.get('region')?.name || '—' })
   }
-
-  const byKind = (kind) => [...grouped.values()]
-    .filter(unit => unit.kind === kind)
-    .sort((left, right) => left.name.localeCompare(right.name, 'ru'))
-  precincts.sort((left, right) => String(left.number).localeCompare(
-    String(right.number),
-    'ru',
-    { numeric: true },
-  ))
 
   const entityList = [...entities.values()]
   const entityIndexes = new Map(entityList.map((entity, index) => [entity.id, index]))
-  const points = analysisPoints.map(([turnout, results]) => [
+  const points = rawPoints.map(([turnout, results]) => [
     turnout,
-    results.map((value, index) => (
-      index % 2 ? value : entityIndexes.get(value)
-    )),
+    results.map((value, index) => index % 2 ? value : entityIndexes.get(value)),
   ])
-  const maxVotes = Array(entityList.length).fill(0)
-  for (const [, results] of points) {
-    for (let index = 0; index < results.length; index += 2) {
-      maxVotes[results[index]] = Math.max(maxVotes[results[index]], results[index + 1])
-    }
-  }
-  const nationalClusters = Array.from({ length: entityList.length }, () => new Map())
-  for (const [turnout, results] of points) {
-    for (let index = 0; index < results.length; index += 2) {
-      const entityIndex = results[index]
-      const votes = results[index + 1]
-      const voteStep = Math.max(1, Math.ceil(maxVotes[entityIndex] / 120))
-      const x = Math.round(turnout / 100) * 100
-      const y = Math.round(votes / voteStep) * voteStep
-      const key = `${x}:${y}`
-      const cluster = nationalClusters[entityIndex].get(key) || [x, y, 0]
-      cluster[2] += 1
-      nationalClusters[entityIndex].set(key, cluster)
-    }
-  }
-  await writeFile(
-    new URL(`${id}/analysis.json`, root),
-    `${JSON.stringify({
-      standard: 'vibori-precinct-analysis/v1',
-      entities: entityList,
-      points,
-      national_clusters: nationalClusters.map(clusters => [...clusters.values()]),
-    })}\n`,
-  )
+  const byKind = kind => [...grouped.values()]
+    .filter(unit => unit.kind === kind)
+    .sort((left, right) => left.name.localeCompare(right.name, 'ru'))
+  precincts.sort((left, right) => String(left.number).localeCompare(String(right.number), 'ru', { numeric: true }))
 
+  const analysisRoot = new URL(`${id}/analysis/`, root)
+  const precinctPageRoot = new URL(`${id}/precinct-pages/`, root)
+  const computedRoot = new URL(`${id}/computed/`, root)
+  await rm(analysisRoot, { recursive: true, force: true })
+  await rm(precinctPageRoot, { recursive: true, force: true })
+  await rm(computedRoot, { recursive: true, force: true })
+  await mkdir(analysisRoot, { recursive: true })
+  await mkdir(precinctPageRoot, { recursive: true })
+  await mkdir(computedRoot, { recursive: true })
+  await writeFile(new URL('national.json', analysisRoot), `${JSON.stringify({
+    standard: 'vibori-chart-analysis/v2', entities: entityList,
+    clusters: clustersFor(points, entityList.length),
+  })}\n`)
+
+  const regional = new Map()
+  for (const [sourceIndex, membership] of memberships.entries()) {
+    if (!membership.region) continue
+    const entry = regional.get(membership.region) || { points: [], units: {} }
+    const index = entry.points.push(points[sourceIndex]) - 1
+    for (const unitId of [membership.tik, membership.district]) {
+      if (!unitId) continue
+      ;(entry.units[unitId] ||= []).push(index)
+    }
+    regional.set(membership.region, entry)
+  }
+  for (const [regionId, entry] of regional) {
+    await writeFile(new URL(`${regionId}.json`, analysisRoot), `${JSON.stringify({
+      standard: 'vibori-chart-analysis/v2', points: entry.points, units: entry.units,
+      clusters: clustersFor(entry.points, entityList.length),
+    })}\n`)
+  }
+
+  for (let page = 0; page * pageSize < precincts.length; page += 1) {
+    await writeFile(new URL(`${page}.json`, precinctPageRoot), `${JSON.stringify(precincts.slice(page * pageSize, (page + 1) * pageSize))}\n`)
+  }
+
+  const aggregateNames = await jsonNames(id, 'aggregates')
   const officialResults = {}
-  for (const name of await jsonNames(id, 'aggregates')) {
+  const computedResults = {}
+  let nationalAggregate
+  for (const name of aggregateNames) {
     const data = await readResult(id, 'aggregates', name)
-    officialResults[data.unit.id] = {
-      file: `aggregates/${name}`,
-      unit: data.unit,
+    officialResults[data.unit.id] = `aggregates/${name}`
+    if (data.unit.kind === 'national') {
+      nationalAggregate = data.unit.id
+      break
     }
   }
-  const nationalId = Object.values(officialResults)
-    .find(entry => entry.unit.kind === 'national')?.unit.id
-    || (first.unit.administrative_path || [])
-      .find(unit => unit.kind === 'national')?.id
-    || first.unit.id
+  for (const [unitId, result] of computed) {
+    if (officialResults[unitId]) continue
+    const file = `computed/${unitId}.json`
+    await writeFile(new URL(`${unitId}.json`, computedRoot), `${JSON.stringify({
+      standard: 'vibori-election-result/v1',
+      source: { publisher: 'Calculated from precinct protocols' },
+      election: first.election, unit: result.unit, ballot: first.ballot,
+      turnout: result.turnout,
+      results: entityList.map(entity => ({ entity, votes: result.votes.get(entity.id) || 0 })),
+    })}\n`)
+    computedResults[unitId] = file
+  }
+  const nationalId = nationalAggregate || (first.unit.administrative_path || []).find(unit => unit.kind === 'national')?.id || first.unit.id
   const regions = byKind('region')
   const election = {
-    id,
-    name: first.election.name,
-    date: first.election.date,
-    country: first.election.country,
-    scope: first.election.scope,
-    ballot_title: first.ballot.title,
-    national_id: nationalId,
-    files: precinctNames.map(name => `precincts/${name}`),
-    official_results: officialResults,
-    precinct_count: precinctNames.length,
-    regions,
-    districts: byKind('district'),
-    tiks: byKind('territorial_commission'),
-    region_count: regions.length,
-    precincts,
+    id, name: first.election.name, date: first.election.date, country: first.election.country,
+    scope: first.election.scope, ballot_title: first.ballot.title, national_id: nationalId,
+    precinct_count: precinctNames.length, region_count: regions.length, entities: entityList,
+    regions, districts: byKind('district'), tiks: byKind('territorial_commission'),
+    official_results: officialResults, computed_results: computedResults,
+    precinct_pages: Math.ceil(precincts.length / pageSize),
   }
   await writeFile(new URL(`${id}/index.json`, root), `${JSON.stringify(election)}\n`)
-  elections.push({
-    id: election.id,
-    name: election.name,
-    date: election.date,
-    country: election.country,
-    scope: election.scope,
-    ballot_title: election.ballot_title,
-    national_id: election.national_id,
-    precinct_count: election.precinct_count,
-    region_count: election.region_count,
-  })
+  await rm(new URL(`${id}/analysis.json`, root), { force: true })
+  const { entities: ignoredEntities, regions: ignoredRegions, districts: ignoredDistricts, tiks: ignoredTiks, official_results: ignoredOfficialResults, computed_results: ignoredComputedResults, precinct_pages: ignoredPages, ...catalogEntry } = election
+  elections.push(catalogEntry)
   global.gc?.()
 }
 
-const catalog = {
-  standard: 'vibori-catalog/v1',
-  generated_at: new Date().toISOString(),
-  elections,
-}
-elections.sort((left, right) => (
-  Number(right.scope === 'national') - Number(left.scope === 'national')
-  || right.date.localeCompare(left.date)
-  || left.name.localeCompare(right.name, 'ru')
-  || left.id.localeCompare(right.id)
-))
+const catalog = { standard: 'vibori-catalog/v1', generated_at: new Date().toISOString(), elections }
+elections.sort((left, right) => Number(right.scope === 'national') - Number(left.scope === 'national') || right.date.localeCompare(left.date) || left.name.localeCompare(right.name, 'ru') || left.id.localeCompare(right.id))
 await writeFile(new URL('index.json', root), `${JSON.stringify(catalog)}\n`)
 await writeFile(new URL('routes.json', root), '["/"]\n')
 console.log(`Catalog updated: ${elections.length} elections`)

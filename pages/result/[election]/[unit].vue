@@ -25,7 +25,7 @@ const isPrecinct = computed(() => unit.value?.kind === 'precinct')
 const analysis = ref()
 watch(unit, async (selectedUnit) => {
   if (selectedUnit && selectedUnit.kind !== 'precinct' && !analysis.value) {
-    analysis.value = await precinctAnalysis(electionId.value)
+    analysis.value = await chartAnalysis(electionId.value, selectedUnit)
   }
 }, { immediate: true })
 const { data: electionDetail } = await useAsyncData(
@@ -77,7 +77,7 @@ const election = computed(() => official.value?.election || files.value[0]?.elec
     <ShpilkinChart
       v-if="!isPrecinct && analysis && electionDetail"
       :analysis="analysis"
-      :election="electionDetail"
+      :entities="electionDetail.entities"
       :unit-id="unitId"
     />
   </template>

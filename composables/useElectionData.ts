@@ -4,7 +4,8 @@ import type {
   ElectionCatalogDetail,
   ElectionCatalog,
   ElectionUnit,
-  PrecinctAnalysis,
+  NationalChartAnalysis,
+  RegionalChartAnalysis,
   ResultFile,
   Turnout,
 } from '~/types/election'
@@ -22,45 +23,39 @@ async function fetchResultFiles(
   )
 }
 
-export async function resultsFor(electionId: string): Promise<ResultFile[]> {
-  const election = await electionCatalog(electionId)
-  return await fetchResultFiles(electionId, election.files)
-}
-
 export async function electionCatalog(electionId: string): Promise<ElectionCatalogDetail> {
   return await $fetch<ElectionCatalogDetail>(`/data/${electionId}/index.json`)
 }
 
-export async function precinctAnalysis(electionId: string): Promise<PrecinctAnalysis> {
-  return await $fetch<PrecinctAnalysis>(`/data/${electionId}/analysis.json`)
+export async function precinctPage(electionId: string, page: number): Promise<CatalogPrecinct[]> {
+  return await $fetch<CatalogPrecinct[]>(`/data/${electionId}/precinct-pages/${page}.json`)
 }
 
-export async function resultBundleFor(
-  electionId: string,
-  unitId: string,
-): Promise<{ files: ResultFile[], official: ResultFile | null }> {
+export async function resultBundleFor(electionId: string, unitId: string): Promise<{ files: ResultFile[], official: ResultFile | null }> {
   const election = await electionCatalog(electionId)
-  const entry = election.official_results?.[unitId]
-  const precinctFiles = election.precincts
-    .filter(precinct => precinct.id === unitId || precinct.path_ids.includes(unitId))
-    .map(precinct => precinct.file)
-  if (entry) {
-    return {
-      files: [],
-      official: await $fetch<ResultFile>(`/data/${electionId}/${entry.file}`),
-    }
+  const officialFile = election.official_results[unitId]
+  if (officialFile) {
+    return { files: [], official: await $fetch<ResultFile>(`/data/${electionId}/${officialFile}`) }
   }
-  return { files: await fetchResultFiles(electionId, precinctFiles), official: null }
+  const computedFile = election.computed_results[unitId]
+  if (computedFile) {
+    return { files: [await $fetch<ResultFile>(`/data/${electionId}/${computedFile}`)], official: null }
+  }
+  return { files: [await $fetch<ResultFile>(`/data/${electionId}/precincts/${unitId}.json`)], official: null }
 }
 
-export async function topLevelResultsFor(
-  election: ElectionCatalogDetail,
-): Promise<ResultFile[]> {
-  const official = election.official_results?.[election.national_id]
-  if (official) {
-    return [await $fetch<ResultFile>(`/data/${election.id}/${official.file}`)]
+export async function chartAnalysis(
+  electionId: string,
+  unit: ElectionUnit,
+): Promise<NationalChartAnalysis | RegionalChartAnalysis> {
+  if (unit.kind === 'national') {
+    return await $fetch<NationalChartAnalysis>(`/data/${electionId}/analysis/national.json`)
   }
-  return await fetchResultFiles(election.id, election.files)
+  const regionId = unit.kind === 'region'
+    ? unit.id
+    : unit.administrative_path?.find(entry => entry.kind === 'region')?.id
+  if (!regionId) throw new Error('The unit has no region analysis segment')
+  return await $fetch<RegionalChartAnalysis>(`/data/${electionId}/analysis/${regionId}.json`)
 }
 
 export function pct(votes: number, valid: number): number {
