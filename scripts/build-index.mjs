@@ -54,6 +54,16 @@ for (const id of electionIds) {
   const memberships = []
   const precincts = []
   const computed = new Map()
+  const treeChildren = new Map()
+  const tikPrecincts = new Map()
+  const addChild = (parent, child) => {
+    if (!parent || !child) return
+    const children = treeChildren.get(parent.id) || new Map()
+    const current = children.get(child.id) || { id: child.id, name: child.name, kind: child.kind, count: 0 }
+    current.count += 1
+    children.set(child.id, current)
+    treeChildren.set(parent.id, children)
+  }
   const addGroup = (unit) => {
     const count = (grouped.get(unit.id)?.count || 0) + 1
     grouped.set(unit.id, { id: unit.id, name: unit.name, kind: unit.kind, count })
@@ -94,6 +104,15 @@ for (const id of electionIds) {
       computed.set(unit.id, current)
     }
     precincts.push({ id: data.unit.id, name: data.unit.name, number: data.unit.number, region: units.get('region')?.name || '—' })
+    const firstLevel = units.get('district') || units.get('region')
+    const tik = units.get('territorial_commission')
+    addChild(units.get('national'), firstLevel)
+    addChild(firstLevel, tik)
+    if (tik) {
+      const list = tikPrecincts.get(tik.id) || []
+      list.push({ id: data.unit.id, name: data.unit.name, number: data.unit.number, region: units.get('region')?.name || '—' })
+      tikPrecincts.set(tik.id, list)
+    }
   }
 
   const entityList = [...entities.values()]
@@ -110,12 +129,15 @@ for (const id of electionIds) {
   const analysisRoot = new URL(`${id}/analysis/`, root)
   const precinctPageRoot = new URL(`${id}/precinct-pages/`, root)
   const computedRoot = new URL(`${id}/computed/`, root)
+  const treeRoot = new URL(`${id}/tree/`, root)
   await rm(analysisRoot, { recursive: true, force: true })
   await rm(precinctPageRoot, { recursive: true, force: true })
   await rm(computedRoot, { recursive: true, force: true })
+  await rm(treeRoot, { recursive: true, force: true })
   await mkdir(analysisRoot, { recursive: true })
   await mkdir(precinctPageRoot, { recursive: true })
   await mkdir(computedRoot, { recursive: true })
+  await mkdir(treeRoot, { recursive: true })
   await writeFile(new URL('national.json', analysisRoot), `${JSON.stringify({
     standard: 'vibori-chart-analysis/v2', entities: entityList,
     clusters: clustersFor(points, entityList.length),
@@ -152,7 +174,6 @@ for (const id of electionIds) {
     officialResults[data.unit.id] = `aggregates/${name}`
     if (data.unit.kind === 'national') {
       nationalAggregate = data.unit.id
-      break
     }
   }
   for (const [unitId, result] of computed) {
@@ -168,18 +189,28 @@ for (const id of electionIds) {
     computedResults[unitId] = file
   }
   const nationalId = nationalAggregate || (first.unit.administrative_path || []).find(unit => unit.kind === 'national')?.id || first.unit.id
+  for (const [parentId, children] of treeChildren) {
+    const nodes = [...children.values()].sort((left, right) => left.name.localeCompare(right.name, 'ru'))
+    await writeFile(new URL(`${parentId}.json`, treeRoot), `${JSON.stringify(nodes)}\n`)
+  }
+  for (const [tikId, list] of tikPrecincts) {
+    list.sort((left, right) => String(left.number).localeCompare(String(right.number), 'ru', { numeric: true }))
+    for (let page = 0; page * pageSize < list.length; page += 1) {
+      await writeFile(new URL(`${tikId}-${page}.json`, treeRoot), `${JSON.stringify(list.slice(page * pageSize, (page + 1) * pageSize))}\n`)
+    }
+  }
   const regions = byKind('region')
   const election = {
     id, name: first.election.name, date: first.election.date, country: first.election.country,
     scope: first.election.scope, ballot_title: first.ballot.title, national_id: nationalId,
     precinct_count: precinctNames.length, region_count: regions.length, entities: entityList,
-    regions, districts: byKind('district'), tiks: byKind('territorial_commission'),
+    tree_root: nationalId,
     official_results: officialResults, computed_results: computedResults,
     precinct_pages: Math.ceil(precincts.length / pageSize),
   }
   await writeFile(new URL(`${id}/index.json`, root), `${JSON.stringify(election)}\n`)
   await rm(new URL(`${id}/analysis.json`, root), { force: true })
-  const { entities: ignoredEntities, regions: ignoredRegions, districts: ignoredDistricts, tiks: ignoredTiks, official_results: ignoredOfficialResults, computed_results: ignoredComputedResults, precinct_pages: ignoredPages, ...catalogEntry } = election
+  const { entities: ignoredEntities, official_results: ignoredOfficialResults, computed_results: ignoredComputedResults, precinct_pages: ignoredPages, tree_root: ignoredTreeRoot, ...catalogEntry } = election
   elections.push(catalogEntry)
   global.gc?.()
 }

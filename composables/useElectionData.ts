@@ -32,6 +32,14 @@ export async function precinctPage(electionId: string, page: number): Promise<Ca
   return await $fetch<CatalogPrecinct[]>(`/data/${electionId}/precinct-pages/${page}.json`)
 }
 
+export async function treeBranch(electionId: string, unitId: string): Promise<CatalogUnit[]> {
+  return await $fetch<CatalogUnit[]>(`/data/${electionId}/tree/${unitId}.json`)
+}
+
+export async function tikPrecinctPage(electionId: string, tikId: string, page: number): Promise<CatalogPrecinct[]> {
+  return await $fetch<CatalogPrecinct[]>(`/data/${electionId}/tree/${tikId}-${page}.json`)
+}
+
 export async function resultBundleFor(electionId: string, unitId: string): Promise<{ files: ResultFile[], official: ResultFile | null }> {
   const election = await electionCatalog(electionId)
   const officialFile = election.official_results[unitId]

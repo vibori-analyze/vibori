@@ -104,9 +104,7 @@ export interface ElectionCatalogDetail extends CatalogElection {
   entities: ElectionEntity[]
   official_results: Record<string, string>
   computed_results: Record<string, string>
-  regions: CatalogUnit[]
-  districts: CatalogUnit[]
-  tiks: CatalogUnit[]
+  tree_root: string
   precinct_pages: number
 }
 
