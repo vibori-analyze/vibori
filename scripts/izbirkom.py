@@ -14,10 +14,12 @@ SPACE=re.compile(r'\s+')
 def clean(x): return SPACE.sub(' ',unescape(x or '')).strip()
 def stable(x): return re.sub('[^a-z0-9]+','-',x.lower()).strip('-')+'-'+hashlib.sha1(x.encode()).hexdigest()[:8]
 class Page(HTMLParser):
- def __init__(self): super().__init__(); self.links=[];self.text=[];self.rows=[];self.href=None;self.row=None;self.cell=None
+ def __init__(self): super().__init__(); self.links=[];self.assets=[];self.base=None;self.text=[];self.rows=[];self.href=None;self.row=None;self.cell=None
  def handle_starttag(self,t,a):
   a=dict(a)
   if t=='a': self.href=a.get('href')
+  if t=='base' and a.get('href'): self.base=a['href']
+  if t=='script' and a.get('src'): self.assets.append(a['src'])
   if t=='tr': self.row=[]
   if t in ('td','th') and self.row is not None:self.cell=[]
  def handle_data(self,d):
@@ -99,6 +101,15 @@ def main():
   for href in page.links:
    target=canonical(urljoin(url,href));host=urlparse(target).netloc
    if host in cfg['allowed_hosts'] and(len(queue)+len(seen)<limit)and(vrn(target)or re.search(cfg['discovery']['follow_pattern'],target)):queue.append(target)
+  asset_base=urljoin(url,page.base) if page.base else url
+  for href in page.assets:
+   target=canonical(urljoin(asset_base,href));host=urlparse(target).netloc
+   if host in cfg['allowed_hosts'] and re.search(cfg['discovery']['asset_pattern'],urlparse(target).path) and target not in seen:
+    queue.append(target);emit('spa_asset',url=target)
+  for endpoint in re.findall(cfg['discovery']['api_url_pattern'],body):
+   target=canonical(urljoin(url,endpoint));host=urlparse(target).netloc
+   if host in cfg['allowed_hosts'] and target not in seen:
+    queue.append(target);emit('api_candidate',url=target)
  event={'event':'complete','pages':len(seen),'campaigns':len(campaigns),'protocols':imported,'next':'nix run .#build-index'}
  if not campaigns:event['warning']='No campaign page was received. Check DNS/routing to www.izbirkom.ru or a CEC CAPTCHA.'
  print(json.dumps(event,ensure_ascii=False),flush=True)
