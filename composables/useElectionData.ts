@@ -2,6 +2,7 @@ import type {
   AggregateResult,
   AggregatedRow,
   CatalogPrecinct,
+  CatalogUnit,
   ElectionCatalogDetail,
   ElectionCatalog,
   ElectionUnit,
