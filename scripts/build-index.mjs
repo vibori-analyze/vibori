@@ -22,18 +22,20 @@ async function readResult(electionId, folderName, name) {
 
 function clustersFor(points, entityCount) {
   const maximums = Array(entityCount).fill(0)
-  for (const [, results] of points) {
+  for (const [, valid, results] of points) {
     for (let index = 0; index < results.length; index += 2) {
-      maximums[results[index]] = Math.max(maximums[results[index]], results[index + 1])
+      const share = valid ? Math.round(results[index + 1] / valid * 10000) : 0
+      maximums[results[index]] = Math.max(maximums[results[index]], share)
     }
   }
   const clusters = Array.from({ length: entityCount }, () => new Map())
-  for (const [turnout, results] of points) {
+  for (const [turnout, valid, results] of points) {
     for (let index = 0; index < results.length; index += 2) {
       const entity = results[index]
       const step = Math.max(1, Math.ceil(maximums[entity] / 120))
       const x = Math.round(turnout / 100) * 100
-      const y = Math.round(results[index + 1] / step) * step
+      const share = valid ? Math.round(results[index + 1] / valid * 10000) : 0
+      const y = Math.round(share / step) * step
       const key = `${x}:${y}`
       const current = clusters[entity].get(key) || [x, y, 0]
       current[2] += 1
@@ -80,6 +82,7 @@ for (const id of electionIds) {
     const units = new Map(path.map(unit => [unit.kind, unit]))
     rawPoints.push([
       data.turnout.registered ? Math.round(data.turnout.issued / data.turnout.registered * 10000) : 0,
+      data.turnout.valid,
       results,
     ])
     memberships.push({
@@ -117,8 +120,9 @@ for (const id of electionIds) {
 
   const entityList = [...entities.values()]
   const entityIndexes = new Map(entityList.map((entity, index) => [entity.id, index]))
-  const points = rawPoints.map(([turnout, results]) => [
+  const points = rawPoints.map(([turnout, valid, results]) => [
     turnout,
+    valid,
     results.map((value, index) => index % 2 ? value : entityIndexes.get(value)),
   ])
   const byKind = kind => [...grouped.values()]

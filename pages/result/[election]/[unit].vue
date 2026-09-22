@@ -23,8 +23,9 @@ const turnout = computed(() => (
 ))
 const isPrecinct = computed(() => unit.value?.kind === 'precinct')
 const analysis = ref()
-watch(unit, async (selectedUnit) => {
-  if (selectedUnit && selectedUnit.kind !== 'precinct' && !analysis.value) {
+watch([unit, electionId], async ([selectedUnit]) => {
+  analysis.value = undefined
+  if (selectedUnit && selectedUnit.kind !== 'precinct') {
     analysis.value = await chartAnalysis(electionId.value, selectedUnit)
   }
 }, { immediate: true })

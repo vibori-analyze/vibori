@@ -117,7 +117,7 @@ export interface NationalChartAnalysis {
 
 export interface RegionalChartAnalysis {
   standard: 'vibori-chart-analysis/v2'
-  points: Array<[turnout: number, results: number[]]>
+  points: Array<[turnout: number, valid: number, results: number[]]>
   units: Record<string, number[]>
   clusters: Array<Array<[turnout: number, votes: number, count: number]>>
 }
