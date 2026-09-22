@@ -1,5 +1,5 @@
 {
-  description = "Vibori — статический обозреватель результатов выборов";
+  description = "Vibori static election-results viewer";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   outputs = { self, nixpkgs }:
@@ -8,7 +8,7 @@
       pkgs = nixpkgs.legacyPackages.${system};
       importer = pkgs.writeShellApplication {
         name = "vibori-import-izbirkom";
-        runtimeInputs = [ pkgs.python3 ];
+        runtimeInputs = [ pkgs.python3 pkgs.python3Packages.pysocks ];
         text = ''exec python3 ${./scripts/izbirkom.py} --config ${./config/izbirkom.json} "$@"'';
       };
       indexer = pkgs.writeShellApplication {
@@ -24,11 +24,11 @@
           nix develop --command npm run generate
           target="''${1:-dist}"
           if [ -e "$target" ] && [ ! -L "$target" ]; then
-            echo "Отказ: $target существует и не является симлинком" >&2
+            echo "Refusing to replace non-symlink target: $target" >&2
             exit 2
           fi
           ln -sfn "$(pwd)/.output/public" "$target"
-          echo "Статический сайт: $target"
+          echo "Static site: $target"
         '';
       };
     in {

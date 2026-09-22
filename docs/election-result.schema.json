@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vibori.example/schema/election-result-1.json",
   "title": "Vibori Election Result v1",
-  "description": "Один файл — один низовой избирательный участок и один бюллетень. Подходит для любой страны и систем списков/округов.",
+  "description": "One file represents one lowest-level precinct and ballot. It supports any country and both list and district systems.",
   "type": "object",
   "required": ["standard", "election", "unit", "ballot", "turnout", "results"],
   "properties": {

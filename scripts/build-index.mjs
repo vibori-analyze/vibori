@@ -24,4 +24,4 @@ for (const id of dirs) {
 }
 await writeFile(new URL('index.json', root), JSON.stringify({ standard:'vibori-catalog/v1', generated_at:new Date().toISOString(), elections }, null, 2) + '\n')
 await writeFile(new URL('routes.json', root), JSON.stringify([...new Set(routes)], null, 2) + '\n')
-console.log(`Каталог обновлён: ${elections.length} голосований`)
+console.log(`Catalog updated: ${elections.length} elections`)

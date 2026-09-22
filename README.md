@@ -1,35 +1,42 @@
-# ВЫБОРЫ
+# Vibori
 
-Статический обозреватель результатов выборов. Nuxt генерирует сайт, браузер читает только JSON из `public/data`, а сводные уровни считает на устройстве посетителя. Поэтому результат можно положить на GitHub Pages без сервера и базы данных.
+A static election-results viewer. Nuxt generates the application, the browser reads only JSON from `public/data`, and computes aggregate levels locally. It can therefore be published on GitHub Pages without a server or database.
 
-Интерфейс строится вокруг цепочки «УИК → ТИК → регион → страна»: выбор в аккордеон-каталоге открывает таблицу результатов, явку и график доли кандидата или списка. Имена кандидатов и партий ведут на агрегированные карточки по всем доступным голосованиям.
+The UI follows the precinct → territorial commission → region → country hierarchy. It provides result tables, turnout, vote-share charts, and cross-election candidate and party pages.
 
 ```bash
 nix run .#import-izbirkom -- --dry-run --max-pages 100
-nix run .#import-izbirkom                 # импорт всех доступных кампаний
-nix run .#build-index                     # каталог УИК/ТИК/регионов
-nix run .#generate                        # статический сайт: ./dist
+nix run .#import-izbirkom                 # import all accessible campaigns
+nix run .#build-index                     # build precinct/commission/region catalog
+nix run .#generate                        # static site: ./dist
 ```
 
-`nix run .#generate public` создаёт симлинк `./public` на готовую статику; это содержимое для GitHub Pages. Команда сама запускает зафиксированную `npm ci` внутри Nix-окружения. `nix develop` нужен только для интерактивной локальной разработки интерфейса.
+`nix run .#generate public` creates a `./public` symlink to the generated static site for GitHub Pages. It runs the locked `npm ci` inside a Nix environment. `nix develop` is only needed for interactive UI development.
 
-Для GitHub Pages опубликуйте содержимое `.output/public`. Если проект расположен не в корне домена, перед сборкой задайте `NUXT_APP_BASE_URL=/имя-репозитория/`.
+Publish `.output/public` for GitHub Pages. Set `NUXT_APP_BASE_URL=/repository-name/` before building when the project is hosted below the domain root.
 
-## Данные
+## Data
 
-Единственный входной формат сервиса — [docs/election-result.schema.json](docs/election-result.schema.json). Каждый файл УИК кладётся в `public/data/<id-голосования>/precincts/*.json`. `scripts/build-index.mjs` создаёт `public/data/index.json`: он автоматически выводит ТИК и регионы по полям `administrative_path`.
+The only service input format is [docs/election-result.schema.json](docs/election-result.schema.json). Store each precinct file at `public/data/<election-id>/precincts/*.json`. `scripts/build-index.mjs` produces `public/data/index.json` and derives territorial commissions and regions from `administrative_path`.
 
-Идентификаторы кандидатов/партий должны быть устойчивыми между файлами: тогда их карточки агрегируют результаты по всем голосованиям. Результат субъекта или ТИК вычисляется в браузере суммированием УИК — отдельных сводных файлов не требуется.
+Candidate and party identifiers must remain stable across files so their pages can aggregate all elections. Region and commission results are computed in the browser from precinct-level data; no separate aggregates are needed.
 
-## Импорт с izbirkom.ru
+## izbirkom.ru import
 
-Конфиг [config/izbirkom.json](config/izbirkom.json) задаёт официальный вход `www.izbirkom.ru/region/izbirkom`, частоту запросов, повторы, предел обхода и признаки таблицы протокола. Импортёр рекурсивно находит доступные кампании (включая ссылки ГАС «Выборы» с `vrn`), бережно обходит их, сохраняет каждый ответ в `raw/izbirkom` и создаёт v1-файлы только для распознанных протоколов УИК. URL и время получения остаются в `source`.
+The [config/izbirkom.json](config/izbirkom.json) configuration defines the official entry point, request rate, retries, crawl limit, and protocol-table signatures. The importer recursively discovers accessible campaigns (including `vrn` links), caches every response in `raw/izbirkom`, and creates v1 files only for recognised precinct protocols. URL and retrieval time remain in `source`.
 
-По умолчанию используется `http://rus.sixty9.ru`, заданный в конфиге. Его можно заменить без изменения файла: `nix run .#import-izbirkom -- --proxy http://localhost:8080` или `VIBORI_PROXY=http://localhost:8080 nix run .#import-izbirkom`. Приоритет: `--proxy` → `VIBORI_PROXY` → конфиг. Адрес прокси виден в событии `start`, но лог не содержит его учётных данных.
+The importer supports HTTP(S) and SOCKS5 proxy URLs. `.env` is loaded automatically and is ignored by Git. The included local value routes traffic through an SSH SOCKS tunnel on `rus.sixty9.ru`:
+
+```bash
+ssh -N -D 127.0.0.1:1080 rus.sixty9.ru
+nix run .#import-izbirkom
+```
+
+Override it without editing: `nix run .#import-izbirkom -- --proxy http://localhost:8080` or `VIBORI_PROXY=http://localhost:8080 nix run .#import-izbirkom`. Priority is `--proxy` → `VIBORI_PROXY` → config. The `start` event reports the proxy host without credentials.
 
 ```bash
 nix run .#import-izbirkom
 nix run .#build-index
 ```
 
-Сначала рекомендуется проверить охват без записи результатов: `nix run .#import-izbirkom -- --dry-run --max-pages 100`. Импорт можно возобновить: уже скачанные HTML повторно не запрашиваются. Параметр `--only-vrn <идентификатор>` ограничивает одну кампанию. Скрейпер выводит JSON Lines-события `start`, `fetch`, `retry`, `progress`, `protocol` и `complete`; частота сводного прогресса задаётся `progress_every_pages` в конфиге. Скрейпер не обходит защиту сайта и не выдаёт нераспознанные/неполные страницы за результаты.
+Start with `nix run .#import-izbirkom -- --dry-run --max-pages 100`. Imports are resumable because downloaded HTML is not requested again. `--only-vrn <identifier>` limits one campaign. The scraper emits JSON Lines events: `start`, `fetch`, `retry`, `progress`, `protocol`, and `complete`; set summary progress frequency with `progress_every_pages`. It does not bypass site protections or treat incomplete pages as results.

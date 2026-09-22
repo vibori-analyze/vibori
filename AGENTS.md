@@ -1,9 +1,9 @@
-# Правила работы
+# Project rules
 
-- Язык интерфейса и документации — русский; идентификаторы в данных и коде — латиницей.
-- Проект обязан собираться статически и не должен требовать API, БД или серверного рендеринга в продакшене.
-- Канонический контракт входных результатов — `docs/election-result.schema.json`. Не добавляйте в UI поддержку сторонних форматов: преобразуйте их импортёрами в этот контракт.
-- Низовой источник — один JSON на УИК и бюллетень; сводные результаты вычисляются как сумма таких файлов.
-- Любой импорт сохраняет URL первоисточника и время получения в `source`. Не выдавайте отсутствующие данные за официальные.
-- Перед коммитом выполняйте доступные проверки (`npm run build:index`, затем `npm run generate` после установки зависимостей) и не включайте `node_modules`, `.nuxt`, `.output` или сырые выгрузки.
-- Для среды разработки и CI используйте Nix: `nix develop`.
+- UI copy may be in Russian. All source code, configuration, documentation, and identifiers must be in English and Latin characters.
+- The production application must be statically generated and require no API, database, or server-side rendering.
+- `docs/election-result.schema.json` is the canonical input contract. Convert external formats in importers; do not add their formats to the UI.
+- A low-level source is one JSON file per precinct and ballot. Higher-level results are sums of those files.
+- Every import retains the source URL and retrieval timestamp in `source`. Never represent missing data as official results.
+- Before committing, run available checks. Do not commit `node_modules`, `.nuxt`, `.output`, or raw downloads.
+- Use Nix for development and CI, preferably through `nix run` applications.

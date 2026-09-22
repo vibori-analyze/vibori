@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Возобновляемый импорт публичных страниц ЦИК/ГАС «Выборы» в Vibori v1."""
+"""Resumable import of public election pages into Vibori v1."""
 from argparse import ArgumentParser
 from datetime import datetime, timezone
 from html import unescape
@@ -8,7 +8,7 @@ from pathlib import Path
 from time import sleep
 from urllib.parse import parse_qs, quote, urljoin, urlparse, urlunparse
 from urllib.request import Request, ProxyHandler, build_opener
-import hashlib, json, os, re
+import hashlib, json, os, re, socket
 
 SPACE=re.compile(r'\s+')
 def clean(x): return SPACE.sub(' ',unescape(x or '')).strip()
@@ -34,6 +34,11 @@ def canonical(u):
 def vrn(u):return (parse_qs(urlparse(u).query).get('vrn')or[None])[0]
 def number(s):
  m=re.search(r'(?<!\d)(\d[\d\s ]*)(?!\d)',s);return int(re.sub(r'\D','',m.group(1))) if m else None
+def load_dotenv(path=Path('.env')):
+ if not path.exists(): return
+ for line in path.read_text().splitlines():
+  key,sep,value=line.partition('=')
+  if sep and key and not key.startswith('#'): os.environ.setdefault(key.strip(),value.strip().strip('"').strip("'"))
 def fetch(url,cfg,raw,emit,opener):
  path=raw/(hashlib.sha256(url.encode()).hexdigest()+'.html')
  if path.exists():
@@ -48,7 +53,7 @@ def fetch(url,cfg,raw,emit,opener):
    if attempt+1 == cfg['request'].get('retries',1): raise
    emit('retry',url=url,attempt=attempt+1,error=str(error))
    sleep(cfg['request'].get('retry_delay_seconds',2)*(attempt+1))
- path.write_text(body);path.with_suffix('.source.json').write_text(json.dumps({'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'ЦИК России / ГАС «Выборы»'},ensure_ascii=False,indent=2)+'\n');emit('saved',url=url,file=str(path));sleep(cfg['request']['delay_seconds']);return body
+ path.write_text(body);path.with_suffix('.source.json').write_text(json.dumps({'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'Central Election Commission of Russia'},ensure_ascii=False,indent=2)+'\n');emit('saved',url=url,file=str(path));sleep(cfg['request']['delay_seconds']);return body
 def protocol(page,url,campaign,cfg):
  text=clean(' '.join(page.text));m=re.search(cfg['protocol']['precinct_pattern'],text,re.I)
  if not m:return None
@@ -59,17 +64,20 @@ def protocol(page,url,campaign,cfg):
   hit=False
   for key,patterns in cfg['protocol']['turnout_aliases'].items():
    if any(re.search(x,line,re.I) for x in patterns):turnout[key]=votes;hit=True;break
-  if not hit and len(row)>=2 and not re.search(r'итог|сведения|участк|протокол',line,re.I):
+  if not hit and len(row)>=2 and not re.search(cfg['protocol']['non_entity_pattern'],line,re.I):
    name=clean(row[0])
    if len(name)>2 and not re.fullmatch(r'\d+',name):entities.append((name,votes))
  if any(x is None for x in turnout.values()) or len(entities)<cfg['protocol']['minimum_entities']:return None
- n=m.group(1);reg=(re.search(cfg['protocol']['region_pattern'],text,re.I)or[campaign['name']])[0];tik=(re.search(cfg['protocol']['tik_pattern'],text,re.I)or['Не указана'])[0];eid=campaign['id']
- return {'standard':'vibori-election-result/v1','source':{'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'ЦИК России / ГАС «Выборы»'},'election':{'id':eid,'name':campaign['name'],'country':'RU','date':'1970-01-01','scope':'other'},'unit':{'id':f'{eid}-uik-{n}','name':f'УИК №{n}','number':n,'kind':'precinct','administrative_path':[{'id':'ru','name':'Российская Федерация','kind':'national'},{'id':'region-'+stable(reg),'name':reg,'kind':'region'},{'id':'tik-'+stable(tik),'name':tik,'kind':'territorial_commission'}]},'ballot':{'id':'main','title':campaign['name'],'kind':'other'},'turnout':turnout,'results':[{'entity':{'id':'candidate-'+stable(name),'name':name,'type':'candidate'},'votes':votes}for name,votes in entities]}
+ n=m.group(1);reg=(re.search(cfg['protocol']['region_pattern'],text,re.I)or[campaign['name']])[0];tik=(re.search(cfg['protocol']['tik_pattern'],text,re.I)or['Not specified'])[0];eid=campaign['id']
+ return {'standard':'vibori-election-result/v1','source':{'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'Central Election Commission of Russia'},'election':{'id':eid,'name':campaign['name'],'country':'RU','date':'1970-01-01','scope':'other'},'unit':{'id':f'{eid}-uik-{n}','name':f'Precinct {n}','number':n,'kind':'precinct','administrative_path':[{'id':'ru','name':'Russian Federation','kind':'national'},{'id':'region-'+stable(reg),'name':reg,'kind':'region'},{'id':'tik-'+stable(tik),'name':tik,'kind':'territorial_commission'}]},'ballot':{'id':'main','title':campaign['name'],'kind':'other'},'turnout':turnout,'results':[{'entity':{'id':'candidate-'+stable(name),'name':name,'type':'candidate'},'votes':votes}for name,votes in entities]}
 def main():
- a=ArgumentParser();a.add_argument('--config',default='config/izbirkom.json');a.add_argument('--out',default='public/data');a.add_argument('--raw',default='raw/izbirkom');a.add_argument('--max-pages',type=int);a.add_argument('--only-vrn');a.add_argument('--proxy',help='HTTP(S)-прокси, например http://rus.sixty9.ru');a.add_argument('--dry-run',action='store_true');args=a.parse_args();cfg=json.loads(Path(args.config).read_text());raw=Path(args.raw);raw.mkdir(parents=True,exist_ok=True);out=Path(args.out);limit=args.max_pages or cfg['discovery']['max_pages'];queue=[canonical(x)for x in cfg['seed_urls']];seen=set();campaigns={};imported=0
+ load_dotenv();a=ArgumentParser();a.add_argument('--config',default='config/izbirkom.json');a.add_argument('--out',default='public/data');a.add_argument('--raw',default='raw/izbirkom');a.add_argument('--max-pages',type=int);a.add_argument('--only-vrn');a.add_argument('--proxy',help='HTTP(S) or SOCKS5 proxy URL');a.add_argument('--dry-run',action='store_true');args=a.parse_args();cfg=json.loads(Path(args.config).read_text());raw=Path(args.raw);raw.mkdir(parents=True,exist_ok=True);out=Path(args.out);limit=args.max_pages or cfg['discovery']['max_pages'];queue=[canonical(x)for x in cfg['seed_urls']];seen=set();campaigns={};imported=0
  proxy=args.proxy or os.environ.get('VIBORI_PROXY') or cfg['request'].get('proxy') or None
- if proxy and urlparse(proxy).scheme not in ('http','https'):raise SystemExit('Прокси должен начинаться с http:// или https://')
- opener=build_opener(ProxyHandler({'http':proxy,'https':proxy}) if proxy else ProxyHandler({}))
+ if proxy and urlparse(proxy).scheme not in ('http','https','socks5','socks5h'):raise SystemExit('Proxy must use http://, https://, socks5://, or socks5h://')
+ if proxy and urlparse(proxy).scheme.startswith('socks'):
+  import socks
+  parsed=urlparse(proxy);socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5,parsed.hostname,parsed.port or 1080,rdns=parsed.scheme=='socks5h');socket.socket=socks.socksocket;opener=build_opener(ProxyHandler({}))
+ else: opener=build_opener(ProxyHandler({'http':proxy,'https':proxy}) if proxy else ProxyHandler({}))
  def emit(event,**data): print(json.dumps({'event':event,**data},ensure_ascii=False),flush=True)
  proxy_public=(urlparse(proxy).scheme+'://'+urlparse(proxy).hostname) if proxy else None
  emit('start',limit=limit,seeds=len(queue),dry_run=args.dry_run,proxy=proxy_public)
@@ -81,7 +89,7 @@ def main():
   try:body=fetch(url,cfg,raw,emit,opener)
   except Exception as e:emit('fetch_error',url=url,error=str(e));continue
   page=Page();page.feed(body);key=vrn(url);text=clean(' '.join(page.text))
-  if key:campaigns.setdefault(key,{'id':'izbirkom-'+key,'name':text[:cfg['discovery']['campaign_title_length']]or'Кампания '+key})
+  if key:campaigns.setdefault(key,{'id':'izbirkom-'+key,'name':text[:cfg['discovery']['campaign_title_length']]or'Campaign '+key})
   if key:
    rec=protocol(page,url,campaigns[key],cfg)
    if rec:
@@ -92,6 +100,6 @@ def main():
    target=canonical(urljoin(url,href));host=urlparse(target).netloc
    if host in cfg['allowed_hosts'] and(len(queue)+len(seen)<limit)and(vrn(target)or re.search(cfg['discovery']['follow_pattern'],target)):queue.append(target)
  event={'event':'complete','pages':len(seen),'campaigns':len(campaigns),'protocols':imported,'next':'nix run .#build-index'}
- if not campaigns:event['warning']='Не получено ни одной страницы кампании: проверьте DNS/маршрут до www.izbirkom.ru или капчу ЦИК.'
+ if not campaigns:event['warning']='No campaign page was received. Check DNS/routing to www.izbirkom.ru or a CEC CAPTCHA.'
  print(json.dumps(event,ensure_ascii=False),flush=True)
 if __name__=='__main__':main()

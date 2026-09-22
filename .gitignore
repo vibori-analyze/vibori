@@ -5,3 +5,4 @@ dist
 raw/
 *.log
 __pycache__/
+.env
