@@ -25,7 +25,7 @@ function clustersFor(points, entityCount) {
   for (const [turnout, valid, results] of points) {
     for (let index = 0; index < results.length; index += 2) {
       const entity = results[index]
-      const share = valid ? Math.round(results[index + 1] / valid * 10000) : 0
+      const share = valid ? results[index + 1] / valid * 10000 : 0
       const key = `${turnout}:${share}`
       const current = clusters[entity].get(key) || [turnout, share, 0]
       current[2] += 1
@@ -86,7 +86,7 @@ for (const id of electionIds) {
     const path = data.unit.administrative_path || []
     const units = new Map(path.map(unit => [unit.kind, unit]))
     rawPoints.push([
-      data.turnout.registered ? Math.round(data.turnout.issued / data.turnout.registered * 10000) : 0,
+      data.turnout.registered ? data.turnout.issued / data.turnout.registered * 10000 : 0,
       data.turnout.valid,
       results,
     ])
