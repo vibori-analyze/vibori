@@ -59,14 +59,14 @@ for (const id of electionIds) {
   const addChild = (parent, child) => {
     if (!parent || !child) return
     const children = treeChildren.get(parent.id) || new Map()
-    const current = children.get(child.id) || { id: child.id, name: child.name, kind: child.kind, count: 0 }
+    const current = children.get(child.id) || { id: child.id, name: child.name, number: child.number, kind: child.kind, count: 0 }
     current.count += 1
     children.set(child.id, current)
     treeChildren.set(parent.id, children)
   }
   const addGroup = (unit) => {
     const count = (grouped.get(unit.id)?.count || 0) + 1
-    grouped.set(unit.id, { id: unit.id, name: unit.name, kind: unit.kind, count })
+    grouped.set(unit.id, { id: unit.id, name: unit.name, number: unit.number, kind: unit.kind, count })
   }
 
   for (const name of precinctNames) {

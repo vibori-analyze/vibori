@@ -54,13 +54,13 @@ function resultLink(election: CatalogElection | ElectionCatalogDetail, unit: Cat
       <template v-else>
         <div class="summary"><span>{{ selected.precinct_count }} УИК</span><span>{{ selected.ballot_title }}</span></div>
         <div class="tree">
-          <details @toggle="event => (event.target as HTMLDetailsElement).open && loadRoot()"><summary><b>ЦИК России</b><span>{{ selected.precinct_count }} УИК</span></summary>
+          <details @toggle="event => (event.target as HTMLDetailsElement).open && loadRoot()"><summary><NuxtLink :to="resultLink(selected, { id: selected.tree_root, name: 'ЦИК России', kind: 'national', count: selected.precinct_count })" @click.stop>ЦИК России</NuxtLink><span>{{ selected.precinct_count }} УИК</span></summary>
             <p v-if="loading.root" class="chart-note">Загрузка…</p>
             <div class="branches" v-else>
-              <details v-for="district in root" :key="district.id" @toggle="event => (event.target as HTMLDetailsElement).open && loadBranch(district.id)"><summary><b>{{ district.name }}</b><span>{{ district.count }} УИК</span></summary>
+              <details v-for="district in root" :key="district.id" @toggle="event => (event.target as HTMLDetailsElement).open && loadBranch(district.id)"><summary><NuxtLink :to="resultLink(selected, district)" @click.stop>{{ district.kind === 'district' && district.number ? `Округ №${district.number}` : district.name }}</NuxtLink><span v-if="district.kind !== 'district'">{{ district.count }} УИК</span></summary>
                 <p v-if="loading[district.id]" class="chart-note">Загрузка…</p>
                 <div v-else class="branches">
-                  <details v-for="tik in branches[district.id]" :key="tik.id" @toggle="event => (event.target as HTMLDetailsElement).open && loadPrecincts(tik.id)"><summary><b>{{ tik.name }}</b><span>{{ tik.count }} УИК</span></summary>
+                  <details v-for="tik in branches[district.id]" :key="tik.id" @toggle="event => (event.target as HTMLDetailsElement).open && loadPrecincts(tik.id)"><summary><NuxtLink :to="resultLink(selected, tik)" @click.stop>{{ tik.name }}</NuxtLink><span>{{ tik.count }} УИК</span></summary>
                     <p v-if="loading[tik.id]" class="chart-note">Загрузка…</p>
                     <div v-else class="branches precincts"><NuxtLink v-for="precinct in precincts[tik.id]" :key="precinct.id" :to="resultLink(selected, precinct)"><small>УИК №{{ precinct.number }}</small>{{ precinct.name }}</NuxtLink></div>
                   </details>

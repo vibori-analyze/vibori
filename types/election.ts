@@ -72,6 +72,7 @@ export interface AggregateResult {
 export interface CatalogUnit {
   id: string
   name: string
+  number?: string
   count: number
   kind: UnitKind
 }
