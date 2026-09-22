@@ -1,6 +1,7 @@
 import type {
   AggregateResult,
   AggregatedRow,
+  CatalogPrecinct,
   ElectionCatalogDetail,
   ElectionCatalog,
   ElectionUnit,
