@@ -9,6 +9,7 @@ from argparse import ArgumentParser
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, TypeAlias
 from urllib.parse import urlencode, urlparse
@@ -55,6 +56,7 @@ def make_opener(proxy: str | None) -> OpenerDirector:
     return build_opener(ProxyHandler({"http": proxy, "https": proxy}))
 
 
+@lru_cache(maxsize=8192)
 def entity_id(name: str) -> str:
     ascii_slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return (ascii_slug or "entity") + "-" + hashlib.sha1(name.encode()).hexdigest()[:10]
@@ -149,6 +151,15 @@ def is_party_protocol(election: JsonObject, protocol_num: int) -> bool:
     return system == "2" or (system == "3" and protocol_num == 2)
 
 
+def vote_count(value: object) -> int:
+    if isinstance(value, bool) or value is None:
+        raise ValueError("Missing or invalid vote count")
+    text = str(value).strip()
+    if not text.isdecimal():
+        raise ValueError("Vote count must be a non-negative integer")
+    return int(text)
+
+
 def report_to_record(
     api_base: str,
     election: JsonObject,
@@ -160,13 +171,15 @@ def report_to_record(
     body = report.get("body") or {}
     records = body.get("records") or []
     counters = {
-        str(row.get("infoPrintNum")): int(row.get("value") or 0)
+        str(row.get("infoPrintNum")): vote_count(row.get("value"))
         for row in records
         if row.get("category") == "records"
     }
     choices = [row for row in records if row.get("category") != "records"]
     if not choices:
         return None
+    if not {"1", "3", "4", "5", "9", "10"}.issubset(counters):
+        raise ValueError("Protocol is missing required turnout counters")
     election_id = f"izbirkom-{election['id']}-p{protocol_num}"
     hierarchy = []
     for item in path[:-1]:
@@ -226,7 +239,7 @@ def report_to_record(
                     "name": row["infoText"],
                     "type": entity_type,
                 },
-                "votes": int(row.get("value") or 0),
+                "votes": vote_count(row.get("value")),
             }
             for row in choices
         ],
@@ -248,80 +261,81 @@ def import_batch(
     api_base: str,
     election: JsonObject,
     batch: list[BatchEntry],
-    workers: int,
+    executor: ThreadPoolExecutor,
     dry_run: bool,
     totals: dict[str, int],
 ) -> None:
-    with ThreadPoolExecutor(max_workers=max(workers, 1)) as executor:
-        pending = {
-            executor.submit(
-                api.get,
-                "/reports/242",
-                {
-                    "commissionClassifierId": unit["externalId"],
-                    "protocolNum": protocol_num,
-                },
-            ): (unit, path, protocol_num, target)
-            for unit, path, protocol_num, target in batch
-        }
-        for future in as_completed(pending):
-            unit, path, protocol_num, target = pending[future]
-            try:
-                report = future.result()
-                record = report_to_record(
-                    api_base, election, unit, path, protocol_num, report
+    pending = {
+        executor.submit(
+            api.get,
+            "/reports/242",
+            {
+                "commissionClassifierId": unit["externalId"],
+                "protocolNum": protocol_num,
+            },
+        ): (unit, path, protocol_num, target)
+        for unit, path, protocol_num, target in batch
+    }
+    for future in as_completed(pending):
+        unit, path, protocol_num, target = pending[future]
+        try:
+            report = future.result()
+            record = report_to_record(
+                api_base, election, unit, path, protocol_num, report
+            )
+            if not record:
+                totals["skipped"] += 1
+                continue
+            if not dry_run:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temporary = target.with_suffix(".json.tmp")
+                temporary.write_text(
+                    json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+                    + "\n",
+                    encoding="utf-8",
                 )
-                if not record:
-                    totals["skipped"] += 1
-                    continue
-                if not dry_run:
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(
-                        json.dumps(record, ensure_ascii=False, separators=(",", ":"))
-                        + "\n",
-                        encoding="utf-8",
-                    )
-                totals["protocols"] += 1
-                if unit_kind(unit) != "precinct":
-                    totals["official_aggregates"] += 1
+                temporary.replace(target)
+            totals["protocols"] += 1
+            if unit_kind(unit) != "precinct":
+                totals["official_aggregates"] += 1
+            emit(
+                "protocol",
+                election=election["id"],
+                unit=unit.get("name"),
+                unit_kind=unit_kind(unit),
+                protocol=protocol_num,
+                imported=totals["protocols"],
+            )
+        except ApiError as error:
+            if error.status == 404:
+                totals["unavailable"] += 1
                 emit(
-                    "protocol",
+                    "protocol_unavailable",
                     election=election["id"],
                     unit=unit.get("name"),
                     unit_kind=unit_kind(unit),
                     protocol=protocol_num,
-                    imported=totals["protocols"],
                 )
-            except ApiError as error:
-                if error.status == 404:
-                    totals["unavailable"] += 1
-                    emit(
-                        "protocol_unavailable",
-                        election=election["id"],
-                        unit=unit.get("name"),
-                        unit_kind=unit_kind(unit),
-                        protocol=protocol_num,
-                    )
-                    continue
-                totals["errors"] += 1
-                emit(
-                    "protocol_error",
-                    election=election["id"],
-                    unit=unit.get("name"),
-                    unit_kind=unit_kind(unit),
-                    protocol=protocol_num,
-                    error=str(error),
-                )
-            except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
-                totals["errors"] += 1
-                emit(
-                    "protocol_error",
-                    election=election["id"],
-                    unit=unit.get("name"),
-                    unit_kind=unit_kind(unit),
-                    protocol=protocol_num,
-                    error=str(error),
-                )
+                continue
+            totals["errors"] += 1
+            emit(
+                "protocol_error",
+                election=election["id"],
+                unit=unit.get("name"),
+                unit_kind=unit_kind(unit),
+                protocol=protocol_num,
+                error=str(error),
+            )
+        except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
+            totals["errors"] += 1
+            emit(
+                "protocol_error",
+                election=election["id"],
+                unit=unit.get("name"),
+                unit_kind=unit_kind(unit),
+                protocol=protocol_num,
+                error=str(error),
+            )
 
 
 def main() -> None:
@@ -384,56 +398,60 @@ def main() -> None:
             index=totals["elections"],
         )
         try:
-            precincts = []
+            units: dict[str, TreeEntry] = {}
+            precinct_count = 0
             for precinct in walk_precincts(api, election):
-                precincts.append(precinct)
-                if args.progress_every and len(precincts) % args.progress_every == 0:
+                precinct_count += 1
+                for index, unit in enumerate(precinct[1]):
+                    units.setdefault(
+                        unit["externalId"], (unit, precinct[1][: index + 1])
+                    )
+                if args.progress_every and precinct_count % args.progress_every == 0:
                     emit(
                         "tree_progress",
                         election=election["id"],
-                        precincts=len(precincts),
+                        precincts=precinct_count,
                     )
-                if args.max_precincts and len(precincts) >= args.max_precincts:
+                if args.max_precincts and precinct_count >= args.max_precincts:
                     break
         except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
             totals["errors"] += 1
             emit("election_error", id=election["id"], error=str(error))
             continue
-        totals["precincts"] += len(precincts)
-        units: dict[str, TreeEntry] = {}
-        for _precinct, path in precincts:
-            for index, unit in enumerate(path):
-                units[unit["externalId"]] = (unit, path[: index + 1])
-        batch: list[BatchEntry] = []
-        batch_size = max(args.workers, 1) * 4
-        for unit, path in units.values():
-            for protocol_num in protocol_numbers(election):
-                folder = "precincts" if unit_kind(unit) == "precinct" else "aggregates"
-                target = (
-                    output
-                    / f"izbirkom-{election['id']}-p{protocol_num}"
-                    / folder
-                    / f"{unit['externalId']}.json"
-                )
-                if target.exists():
-                    totals["skipped"] += 1
-                    continue
-                batch.append((unit, path, protocol_num, target))
-                if len(batch) >= batch_size:
-                    import_batch(
-                        api,
-                        api_base,
-                        election,
-                        batch,
-                        args.workers,
-                        args.dry_run,
-                        totals,
+        totals["precincts"] += precinct_count
+        with ThreadPoolExecutor(max_workers=max(args.workers, 1)) as executor:
+            batch: list[BatchEntry] = []
+            batch_size = max(args.workers, 1) * 4
+            for unit, path in units.values():
+                for protocol_num in protocol_numbers(election):
+                    folder = (
+                        "precincts" if unit_kind(unit) == "precinct" else "aggregates"
                     )
-                    batch = []
-        if batch:
-            import_batch(
-                api, api_base, election, batch, args.workers, args.dry_run, totals
-            )
+                    target = (
+                        output
+                        / f"izbirkom-{election['id']}-p{protocol_num}"
+                        / folder
+                        / f"{unit['externalId']}.json"
+                    )
+                    if target.exists():
+                        totals["skipped"] += 1
+                        continue
+                    batch.append((unit, path, protocol_num, target))
+                    if len(batch) >= batch_size:
+                        import_batch(
+                            api,
+                            api_base,
+                            election,
+                            batch,
+                            executor,
+                            args.dry_run,
+                            totals,
+                        )
+                        batch = []
+            if batch:
+                import_batch(
+                    api, api_base, election, batch, executor, args.dry_run, totals
+                )
     emit("complete", **totals, next="nix run .#build-index")
 
 

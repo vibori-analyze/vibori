@@ -1,75 +1,136 @@
 <script setup lang="ts">
-import type { CatalogElection, CatalogPrecinct, CatalogUnit, ElectionCatalogDetail } from '~/types/election'
+import type { CatalogPrecinct, CatalogUnit } from '~/types/election'
 
-const { data, error } = await useAsyncData('catalog', catalog)
-const electionId = ref('')
-const selected = ref<ElectionCatalogDetail | null>(null)
-const selectedError = ref<Error | null>(null)
-const root = ref<CatalogUnit[]>([])
-const branches = reactive<Record<string, CatalogUnit[]>>({})
-const precincts = reactive<Record<string, CatalogPrecinct[]>>({})
-const loading = reactive<Record<string, boolean>>({})
-
-watchEffect(() => {
-  if (!electionId.value && data.value?.elections[0]) electionId.value = data.value.elections[0].id
+const route = useRoute()
+const router = useRouter()
+const { data, error, refresh } = await useAsyncData('catalog', catalog, { deep: false })
+const electionId = computed(() => String(route.query.election || data.value?.elections[0]?.id || ''))
+const election = computed(() => data.value?.elections.find(item => item.id === electionId.value))
+const trail = shallowRef<CatalogUnit[]>([])
+const units = shallowRef<Array<CatalogUnit | CatalogPrecinct>>([])
+const loading = ref(false)
+const loadError = ref(false)
+const retry = ref(0)
+const search = ref('')
+const page = ref(1)
+const pageSize = 48
+const current = computed(() => trail.value.at(-1))
+const normalize = (value: string) => value.toLocaleLowerCase('ru').replaceAll('ё', 'е').trim()
+const searchable = computed(() => units.value.map(unit => ({ unit, text: normalize([unit.name, unit.number || '', 'region' in unit ? unit.region : ''].join(' ')) })))
+const matches = computed(() => {
+  const terms = normalize(search.value).split(/\s+/).filter(Boolean)
+  return searchable.value.filter(item => terms.every(term => item.text.includes(term))).map(item => item.unit)
 })
-watch(electionId, async (id) => {
-  selected.value = null
-  root.value = []
-  Object.keys(branches).forEach(key => delete branches[key])
-  Object.keys(precincts).forEach(key => delete precincts[key])
-  if (!id) return
+const pages = computed(() => Math.ceil(matches.value.length / pageSize))
+const visible = computed(() => matches.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+watch(search, () => { page.value = 1 })
+
+watch([election, () => route.query.path, retry], async ([selected, path], _, onCleanup) => {
+  let cancelled = false
+  onCleanup(() => { cancelled = true })
+  units.value = []
+  trail.value = []
+  search.value = ''
+  page.value = 1
+  loadError.value = false
+  loading.value = false
+  if (!selected) return
+  loading.value = true
   try {
-    selected.value = await electionCatalog(id)
-  } catch (cause: unknown) {
-    selectedError.value = cause instanceof Error ? cause : new Error(String(cause))
+    let children = await treeBranch(selected.id, selected.national_id)
+    const nextTrail: CatalogUnit[] = []
+    for (const id of String(path || '').split('/').filter(Boolean)) {
+      const node = children.find(item => item.id === id)
+      if (!node) throw new Error('Unknown commission')
+      nextTrail.push(node)
+      if (node.kind === 'territorial_commission') {
+        const precincts: CatalogPrecinct[] = []
+        for (let index = 0; index < Math.ceil(node.count / 500); index += 1) {
+          precincts.push(...await tikPrecinctPage(selected.id, node.id, index))
+          if (cancelled) return
+        }
+        if (!cancelled) units.value = precincts
+        break
+      }
+      children = await treeBranch(selected.id, node.id)
+      if (cancelled) return
+    }
+    if (!cancelled) {
+      trail.value = nextTrail
+      if (nextTrail.at(-1)?.kind !== 'territorial_commission') units.value = children
+    }
+  } catch {
+    if (!cancelled) loadError.value = true
+  } finally {
+    if (!cancelled) loading.value = false
   }
-})
-async function loadBranch(id: string): Promise<void> {
-  if (!selected.value || branches[id] || loading[id]) return
-  loading[id] = true
-  try { branches[id] = await treeBranch(selected.value.id, id) } finally { loading[id] = false }
+}, { immediate: true })
+
+function browse(depth: number, unit?: CatalogUnit): void {
+  const path = trail.value.slice(0, depth).map(item => item.id)
+  if (unit) path.push(unit.id)
+  void router.push({ query: { election: electionId.value, ...(path.length ? { path: path.join('/') } : {}) } })
 }
-async function loadRoot(): Promise<void> {
-  if (!selected.value || root.value.length || loading.root) return
-  loading.root = true
-  try { root.value = await treeBranch(selected.value.id, selected.value.tree_root) } finally { loading.root = false }
+function chooseElection(event: Event): void {
+  void router.push({ query: { election: (event.target as HTMLSelectElement).value } })
 }
-async function loadPrecincts(id: string): Promise<void> {
-  if (!selected.value || precincts[id] || loading[id]) return
-  loading[id] = true
-  try { precincts[id] = await tikPrecinctPage(selected.value.id, id, 0) } finally { loading[id] = false }
+function resultLink(id: string): string {
+  return '/result/' + encodeURIComponent(electionId.value) + '/' + encodeURIComponent(id)
 }
-function resultLink(election: CatalogElection | ElectionCatalogDetail, unit: CatalogUnit | CatalogPrecinct): string {
-  return `/result/${election.id}/${encodeURIComponent(unit.id)}`
-}
+const count = (value: number) => value.toLocaleString('ru-RU')
+const ballotLabel = (kind?: string) => kind === 'party_list' ? 'Партийный бюллетень' : kind === 'single_member' ? 'Кандидаты по округам' : ''
+useHead({ title: 'Выборы — найти результаты своего участка' })
 </script>
+
 <template>
   <div class="home">
-    <section class="hero"><p class="eyebrow">ОТКРЫТАЯ АРХИВНАЯ СИСТЕМА</p><h1>Результаты,<br><em>которые можно проверить.</em></h1><p>Первичные протоколы УИК, собранные в один понятный обзор.</p></section>
-    <p v-if="error || selectedError" class="empty">Не удалось загрузить каталог данных.</p>
-    <section v-else-if="data" class="catalog">
-      <div class="elections"><label>ГОЛОСОВАНИЕ</label><select v-model="electionId"><option v-for="election in data.elections" :key="election.id" :value="election.id">{{ election.name }} · {{ election.date }}</option></select></div>
-      <p v-if="!selected" class="empty">Загрузка данных голосования…</p>
-      <template v-else>
-        <div class="summary"><span>{{ selected.precinct_count }} УИК</span><span>{{ selected.ballot_title }}</span></div>
-        <div class="tree">
-          <details @toggle="event => (event.target as HTMLDetailsElement).open && loadRoot()"><summary><NuxtLink :to="resultLink(selected, { id: selected.tree_root, name: 'ЦИК России', kind: 'national', count: selected.precinct_count })" @click.stop>ЦИК России</NuxtLink><span>{{ selected.precinct_count }} УИК</span></summary>
-            <p v-if="loading.root" class="chart-note">Загрузка…</p>
-            <div class="branches" v-else>
-              <details v-for="district in root" :key="district.id" @toggle="event => (event.target as HTMLDetailsElement).open && loadBranch(district.id)"><summary><NuxtLink :to="resultLink(selected, district)" @click.stop>{{ district.kind === 'district' && district.number ? `Округ №${district.number}` : district.name }}</NuxtLink><span v-if="district.kind !== 'district'">{{ district.count }} УИК</span></summary>
-                <p v-if="loading[district.id]" class="chart-note">Загрузка…</p>
-                <div v-else class="branches">
-                  <details v-for="tik in branches[district.id]" :key="tik.id" @toggle="event => (event.target as HTMLDetailsElement).open && loadPrecincts(tik.id)"><summary><NuxtLink :to="resultLink(selected, tik)" @click.stop>{{ tik.name }}</NuxtLink><span>{{ tik.count }} УИК</span></summary>
-                    <p v-if="loading[tik.id]" class="chart-note">Загрузка…</p>
-                    <div v-else class="branches precincts"><NuxtLink v-for="precinct in precincts[tik.id]" :key="precinct.id" :to="resultLink(selected, precinct)"><small>УИК №{{ precinct.number }}</small>{{ precinct.name }}</NuxtLink></div>
-                  </details>
-                </div>
-              </details>
-            </div>
-          </details>
-        </div>
-      </template>
+    <section class="home-hero">
+      <p class="eyebrow">ОТКРЫТЫЙ АРХИВ ВЫБОРОВ</p>
+      <h1>Каждый голос.<br><span>Каждый участок.</span></h1>
+      <p>Найдите свою территорию, посмотрите результаты и проверьте исходный протокол.</p>
+      <a class="primary-link" href="#catalog">Найти результаты <span aria-hidden="true">↗</span></a>
+      <div class="hero-mark" aria-hidden="true">%</div>
     </section>
+    <section id="catalog" class="browser" aria-label="Каталог результатов">
+      <div v-if="error" class="status" role="alert">Не удалось загрузить каталог. <button @click="refresh()">Повторить</button></div>
+      <template v-else-if="data">
+        <div class="browser-heading">
+          <div><p class="eyebrow">РЕЗУЛЬТАТЫ ГОЛОСОВАНИЯ</p><h2>Найдите свою комиссию</h2></div>
+          <span class="archive-badge">{{ data.elections.length }} голосования в архиве</span>
+        </div>
+        <label for="election">Голосование</label>
+        <select id="election" class="election-select" :value="electionId" @change="chooseElection">
+          <option v-for="item in data.elections" :key="item.id" :value="item.id">{{ ballotLabel(item.ballot_kind) || item.ballot_title }} · {{ item.date }} · {{ item.name }}</option>
+        </select>
+        <template v-if="election">
+          <div class="archive-summary"><span>{{ count(election.precinct_count) }} УИК в архиве</span><span>{{ election.region_count }} регионов</span><NuxtLink :to="resultLink(election.national_id)">Сводные результаты ↗</NuxtLink></div>
+          <nav class="breadcrumbs" aria-label="Путь к комиссии">
+            <button :aria-current="!trail.length ? 'location' : undefined" @click="browse(0)">Все территории</button>
+            <template v-for="(unit, index) in trail" :key="unit.id"><span aria-hidden="true">/</span><button :aria-current="index === trail.length - 1 ? 'location' : undefined" @click="browse(index + 1)">{{ unit.name }}</button></template>
+          </nav>
+          <div class="territory-heading"><h3>{{ current?.name || 'Территории голосования' }}</h3><NuxtLink v-if="current" :to="resultLink(current.id)">Результаты комиссии ↗</NuxtLink></div>
+          <label class="search-field" for="territory-search"><span aria-hidden="true">⌕</span><input id="territory-search" v-model="search" type="search" :placeholder="current?.kind === 'territorial_commission' ? 'Номер или название УИК' : 'Название территории или номер округа'" :disabled="loading" autocomplete="off"><span class="sr-only">Поиск в текущем списке</span><kbd aria-hidden="true">{{ matches.length }}</kbd></label>
+          <p v-if="loading" class="status" role="status">Загружаем комиссии…</p>
+          <p v-else-if="loadError" class="status" role="alert">Не удалось загрузить комиссии. <button @click="retry++">Повторить</button><button @click="browse(0)">Все территории</button></p>
+          <template v-else>
+            <p class="list-caption" aria-live="polite">{{ search ? 'Найдено' : 'В этом списке' }}: {{ count(matches.length) }} · Выберите территорию или откройте её результаты</p>
+            <div v-if="visible.length" class="territory-grid">
+              <article v-for="unit in visible" :key="unit.id" class="territory-card">
+                <template v-if="'kind' in unit">
+                  <button class="territory-name" @click="browse(trail.length, unit)"><span>{{ unit.name }}</span><span aria-hidden="true">→</span></button>
+                  <div class="territory-meta"><span>{{ count(unit.count) }} УИК</span><NuxtLink :to="resultLink(unit.id)" :aria-label="'Результаты: ' + unit.name">Результаты ↗</NuxtLink></div>
+                </template>
+                <NuxtLink v-else class="precinct-link" :to="resultLink(unit.id)"><span><strong>УИК №{{ unit.number || unit.name }}</strong><small>{{ unit.name }} · {{ unit.region }}</small></span><span aria-hidden="true">↗</span></NuxtLink>
+              </article>
+            </div>
+            <p v-else class="status">{{ search ? 'Ничего не найдено. Попробуйте другое название или номер.' : 'В архиве пока нет нижестоящих комиссий.' }}</p>
+            <nav v-if="pages > 1" class="pagination" aria-label="Страницы комиссий"><button :disabled="page === 1" @click="page--">← Назад</button><span aria-live="polite"> {{ page }} / {{ pages }} </span><button :disabled="page === pages" @click="page++">Далее →</button></nav>
+          </template>
+        </template>
+        <p v-else class="status">Голосование не найдено. Выберите голосование из списка.</p>
+      </template>
+      <p v-else class="status" role="status">Загружаем архив…</p>
+    </section>
+    <aside class="archive-note"><strong>Откуда эти цифры?</strong><p>Официальные сводные протоколы имеют приоритет. Если сводного протокола нет, показываем сумму доступных участков с пометкой «Расчёт». Число УИК в архиве не означает полноту официальных итогов.</p></aside>
   </div>
 </template>

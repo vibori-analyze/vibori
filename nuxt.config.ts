@@ -7,7 +7,8 @@ const staticRoutes: string[] = existsSync(routeFile)
 
 export default defineNuxtConfig({
   ssr: false,
-  devtools: { enabled: true },
+  devtools: { enabled: false },
+  experimental: { defaults: { nuxtLink: { prefetch: false } } },
   dir: {
     public: process.env.VIBORI_STATIC_BUILD ? 'public-app' : 'public',
   },

@@ -4,5 +4,6 @@ node_modules/
 dist
 raw/
 *.log
+*.json.tmp
 __pycache__/
 .env

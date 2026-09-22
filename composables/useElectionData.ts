@@ -12,60 +12,65 @@ import type {
   Turnout,
 } from '~/types/election'
 
-export async function catalog(): Promise<ElectionCatalog> {
-  return await $fetch<ElectionCatalog>('/data/index.json')
+// Reuse immutable catalogs and concurrent requests without retaining large charts.
+const cache = new Map<string, Promise<unknown>>()
+function staticData<T>(path: string): Promise<T> {
+  const base = useRuntimeConfig().app.baseURL
+  const url = `${base.replace(/\/$/, '')}/data/${path}`
+  const existing = cache.get(url)
+  if (existing) return existing as Promise<T>
+  const request = $fetch<T>(url).catch(error => { cache.delete(url); throw error })
+  cache.set(url, request)
+  if (cache.size > 32) cache.delete(cache.keys().next().value!)
+  return request
 }
 
-async function fetchResultFiles(
-  electionId: string,
-  files: string[],
-): Promise<ResultFile[]> {
-  return await Promise.all(
-    files.map(file => $fetch<ResultFile>(`/data/${electionId}/${file}`)),
-  )
+export async function catalog(): Promise<ElectionCatalog> {
+  return staticData<ElectionCatalog>('index.json')
 }
 
 export async function electionCatalog(electionId: string): Promise<ElectionCatalogDetail> {
-  return await $fetch<ElectionCatalogDetail>(`/data/${electionId}/index.json`)
+  return staticData<ElectionCatalogDetail>(`${electionId}/index.json`)
 }
 
 export async function precinctPage(electionId: string, page: number): Promise<CatalogPrecinct[]> {
-  return await $fetch<CatalogPrecinct[]>(`/data/${electionId}/precinct-pages/${page}.json`)
+  return staticData<CatalogPrecinct[]>(`${electionId}/precinct-pages/${page}.json`)
 }
 
 export async function treeBranch(electionId: string, unitId: string): Promise<CatalogUnit[]> {
-  return await $fetch<CatalogUnit[]>(`/data/${electionId}/tree/${unitId}.json`)
+  return staticData<CatalogUnit[]>(`${electionId}/tree/${unitId}.json`)
 }
 
 export async function tikPrecinctPage(electionId: string, tikId: string, page: number): Promise<CatalogPrecinct[]> {
-  return await $fetch<CatalogPrecinct[]>(`/data/${electionId}/tree/${tikId}-${page}.json`)
+  return staticData<CatalogPrecinct[]>(`${electionId}/tree/${tikId}-${page}.json`)
 }
 
 export async function resultBundleFor(electionId: string, unitId: string): Promise<{ files: ResultFile[], official: ResultFile | null }> {
   const election = await electionCatalog(electionId)
   const officialFile = election.official_results[unitId]
   if (officialFile) {
-    return { files: [], official: await $fetch<ResultFile>(`/data/${electionId}/${officialFile}`) }
+    return { files: [], official: await staticData<ResultFile>(`${electionId}/${officialFile}`) }
   }
   const computedFile = election.computed_results[unitId]
   if (computedFile) {
-    return { files: [await $fetch<ResultFile>(`/data/${electionId}/${computedFile}`)], official: null }
+    return { files: [await staticData<ResultFile>(`${electionId}/${computedFile}`)], official: null }
   }
-  return { files: [await $fetch<ResultFile>(`/data/${electionId}/precincts/${unitId}.json`)], official: null }
+  return { files: [await staticData<ResultFile>(`${electionId}/precincts/${unitId}.json`)], official: null }
 }
 
 export async function chartAnalysis(
   electionId: string,
   unit: ElectionUnit,
 ): Promise<NationalChartAnalysis | RegionalChartAnalysis> {
+  const base = useRuntimeConfig().app.baseURL.replace(/\/$/, '')
   if (unit.kind === 'national') {
-    return await $fetch<NationalChartAnalysis>(`/data/${electionId}/analysis/national.json`)
+    return await $fetch<NationalChartAnalysis>(`${base}/data/${electionId}/analysis/national.json`)
   }
   const regionId = unit.kind === 'region'
     ? unit.id
     : unit.administrative_path?.find(entry => entry.kind === 'region')?.id
   if (!regionId) throw new Error('The unit has no region analysis segment')
-  return await $fetch<RegionalChartAnalysis>(`/data/${electionId}/analysis/${regionId}.json`)
+  return await $fetch<RegionalChartAnalysis>(`${base}/data/${electionId}/analysis/${regionId}.json`)
 }
 
 export function pct(votes: number, valid: number): number {

@@ -96,6 +96,7 @@ export interface CatalogElection {
   country: string
   scope?: 'national' | 'regional' | 'municipal' | 'other'
   ballot_title: string
+  ballot_kind?: ResultFile['ballot']['kind']
   national_id: string
   precinct_count: number
   region_count: number
@@ -109,22 +110,25 @@ export interface ElectionCatalogDetail extends CatalogElection {
   precinct_pages: number
 }
 
+export type AnalysisPoint = [turnout: number, valid: number, results: number[]]
+
 export interface NationalChartAnalysis {
-  standard: 'vibori-chart-analysis/v2'
+  standard: 'vibori-chart-analysis/v2' | 'vibori-chart-analysis/v3'
   entities: ElectionEntity[]
-  clusters: Array<Array<[turnout: number, votes: number, count: number]>>
-  absolute: Array<Array<[turnout: number, votes: number, count: number]>>
-  absolute1: Array<Array<[turnout: number, votes: number, count: number]>>
+  points?: AnalysisPoint[]
+  clusters?: Array<Array<[turnout: number, votes: number, count: number]>>
+  absolute?: Array<Array<[turnout: number, votes: number, count: number]>>
+  absolute1?: Array<Array<[turnout: number, votes: number, count: number]>>
   absoluteRaw?: Array<Array<[turnout: number, votes: number, count: number]>>
 }
 
 export interface RegionalChartAnalysis {
-  standard: 'vibori-chart-analysis/v2'
-  points: Array<[turnout: number, valid: number, results: number[]]>
+  standard: 'vibori-chart-analysis/v2' | 'vibori-chart-analysis/v3'
+  points: AnalysisPoint[]
   units: Record<string, number[]>
-  clusters: Array<Array<[turnout: number, votes: number, count: number]>>
-  absolute: Array<Array<[turnout: number, votes: number, count: number]>>
-  absolute1: Array<Array<[turnout: number, votes: number, count: number]>>
+  clusters?: Array<Array<[turnout: number, votes: number, count: number]>>
+  absolute?: Array<Array<[turnout: number, votes: number, count: number]>>
+  absolute1?: Array<Array<[turnout: number, votes: number, count: number]>>
 }
 
 export interface ElectionCatalog {

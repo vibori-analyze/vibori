@@ -17,7 +17,7 @@
       indexer = pkgs.writeShellApplication {
         name = "vibori-build-index";
         runtimeInputs = [ pkgs.nodejs_22 ];
-        text = ''exec node --expose-gc ${./scripts/build-index.mjs} "''${1:-public/data}"'';
+        text = ''exec node --expose-gc ${./scripts/build-index.mjs} "$@"'';
       };
       generator = pkgs.writeShellApplication {
         name = "vibori-generate";
@@ -27,6 +27,9 @@
           VIBORI_STATIC_BUILD=1 nix develop --command npm run generate
           mkdir -p .output/public/data
           cp -a public/data/. .output/public/data/
+          if [ -n "''${VIBORI_INDEX_DIR:-}" ]; then
+            cp -a "$VIBORI_INDEX_DIR/." .output/public/data/
+          fi
           target="''${1:-dist}"
           if [ -e "$target" ] && [ ! -L "$target" ]; then
             echo "Refusing to replace non-symlink target: $target" >&2
@@ -38,12 +41,14 @@
       };
       checker = pkgs.writeShellApplication {
         name = "vibori-check";
-        runtimeInputs = [ pkgs.mypy pkgs.nodejs_22 pkgs.ruff ];
+        runtimeInputs = [ pkgs.mypy pkgs.nodejs_22 pkgs.python3 pkgs.ruff ];
         text = ''
           npm ci
           ruff format --check scripts
           ruff check scripts
           mypy --ignore-missing-imports scripts/import_izbirkom_api.py scripts/izbirkom_api.py
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          node --test scripts/*.test.mjs
           npm run typecheck
         '';
       };
