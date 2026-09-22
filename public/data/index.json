@@ -1,6 +1,6 @@
 {
   "standard": "vibori-catalog/v1",
-  "generated_at": "2026-09-22T03:46:33.787Z",
+  "generated_at": "2026-09-22T04:42:03.822Z",
   "elections": [
     {
       "id": "demo-2024",
@@ -14,6 +14,7 @@
         "precincts/uik-1002.json",
         "precincts/uik-2001.json"
       ],
+      "official_results": {},
       "precinct_count": 3,
       "regions": [
         {
@@ -29,6 +30,7 @@
           "count": 2
         }
       ],
+      "districts": [],
       "tiks": [
         {
           "id": "tik-ekb-1",
@@ -50,21 +52,36 @@
           "name": "УИК №1001",
           "number": "1001",
           "region": "Свердловская область",
-          "file": "precincts/uik-1001.json"
+          "file": "precincts/uik-1001.json",
+          "path_ids": [
+            "ru",
+            "sverdlovsk",
+            "tik-ekb-1"
+          ]
         },
         {
           "id": "uik-1002",
           "name": "УИК №1002",
           "number": "1002",
           "region": "Свердловская область",
-          "file": "precincts/uik-1002.json"
+          "file": "precincts/uik-1002.json",
+          "path_ids": [
+            "ru",
+            "sverdlovsk",
+            "tik-ekb-1"
+          ]
         },
         {
           "id": "uik-2001",
           "name": "УИК №2001",
           "number": "2001",
           "region": "Пермский край",
-          "file": "precincts/uik-2001.json"
+          "file": "precincts/uik-2001.json",
+          "path_ids": [
+            "ru",
+            "perm",
+            "tik-perm-2"
+          ]
         }
       ]
     }

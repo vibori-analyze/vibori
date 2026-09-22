@@ -9,12 +9,15 @@
       importer = pkgs.writeShellApplication {
         name = "vibori-import-izbirkom";
         runtimeInputs = [ (pkgs.python3.withPackages (pythonPackages: [ pythonPackages.pysocks ])) ];
-        text = ''exec python3 ${./scripts/izbirkom.py} --config ${./config/izbirkom.json} "$@"'';
+        text = ''
+          export PYTHONPATH=${./scripts}
+          exec python3 ${./scripts/import_izbirkom_api.py} --config ${./config/izbirkom.json} "$@"
+        '';
       };
       indexer = pkgs.writeShellApplication {
         name = "vibori-build-index";
         runtimeInputs = [ pkgs.nodejs_22 ];
-        text = ''exec node ${./scripts/build-index.mjs} public/data'';
+        text = ''exec node ${./scripts/build-index.mjs} "''${1:-public/data}"'';
       };
       generator = pkgs.writeShellApplication {
         name = "vibori-generate";
@@ -31,13 +34,27 @@
           echo "Static site: $target"
         '';
       };
+      checker = pkgs.writeShellApplication {
+        name = "vibori-check";
+        runtimeInputs = [ pkgs.mypy pkgs.nodejs_22 pkgs.ruff ];
+        text = ''
+          npm ci
+          ruff format --check scripts
+          ruff check scripts
+          mypy --ignore-missing-imports scripts/import_izbirkom_api.py scripts/izbirkom_api.py
+          npm run typecheck
+        '';
+      };
     in {
       packages.${system}.default = generator;
       apps.${system} = {
         import-izbirkom = { type = "app"; program = "${importer}/bin/vibori-import-izbirkom"; };
         build-index = { type = "app"; program = "${indexer}/bin/vibori-build-index"; };
+        check = { type = "app"; program = "${checker}/bin/vibori-check"; };
         generate = { type = "app"; program = "${generator}/bin/vibori-generate"; };
       };
-      devShells.${system}.default = pkgs.mkShell { packages = [ pkgs.nodejs_22 pkgs.python3 pkgs.jq ]; };
+      devShells.${system}.default = pkgs.mkShell {
+        packages = [ pkgs.jq pkgs.mypy pkgs.nodejs_22 pkgs.python3 pkgs.ruff ];
+      };
     };
 }

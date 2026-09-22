@@ -5,10 +5,15 @@
   "scripts": {
     "dev": "nuxt dev",
     "generate": "nuxt generate",
+    "typecheck": "nuxt typecheck",
     "build:index": "node scripts/build-index.mjs",
-    "import:izbirkom": "python3 scripts/izbirkom.py",
-    "import:izbirkom:all": "python3 scripts/izbirkom.py --config config/izbirkom.json"
+    "import:izbirkom": "python3 scripts/import_izbirkom_api.py",
+    "import:izbirkom:all": "python3 scripts/import_izbirkom_api.py --config config/izbirkom.json"
   },
   "dependencies": { "nuxt": "^3.17.7", "vue": "^3.5.18" },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2",
+    "vue-tsc": "^3.0.6"
+  }
 }

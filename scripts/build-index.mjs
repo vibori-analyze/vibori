@@ -1,27 +1,123 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
-const root = new URL(process.argv[2] ? `${process.cwd()}/${process.argv[2].replace(/^\.\//, '')}/` : '../public/data/', import.meta.url)
-const dirs = (await readdir(root, { withFileTypes: true })).filter(x => x.isDirectory()).map(x => x.name)
-const elections = []; const routes = ['/']
-for (const id of dirs) {
-  const folder = new URL(`${id}/precincts/`, root)
-  let names; try { names = (await readdir(folder)).filter(x => x.endsWith('.json')) } catch { continue }
-  const loaded = await Promise.all(names.map(async n => ({ file: `precincts/${n}`, data: JSON.parse(await readFile(new URL(n, folder), 'utf8')) })))
-  if (!loaded.length) continue
-  const first = loaded[0].data; const grouped = (kind) => {
-    const map = new Map()
-    loaded.forEach(({data}) => (data.unit.administrative_path || []).filter(x => x.kind === kind).forEach(x => map.set(x.id, {...x, count: (map.get(x.id)?.count || 0) + 1})))
-    return [...map.values()].sort((a,b) => a.name.localeCompare(b.name, 'ru'))
+const root = pathToFileURL(`${resolve(process.argv[2] || 'public/data')}/`)
+const directoryEntries = await readdir(root, { withFileTypes: true })
+const electionIds = directoryEntries
+  .filter(entry => entry.isDirectory())
+  .map(entry => entry.name)
+const elections = []
+const routes = ['/']
+
+async function loadFolder(electionId, folderName) {
+  const folder = new URL(`${electionId}/${folderName}/`, root)
+  let names
+  try {
+    names = (await readdir(folder)).filter(name => name.endsWith('.json'))
+  } catch {
+    return []
   }
-  const precincts = loaded.map(({file,data}) => ({ id:data.unit.id, name:data.unit.name, number:data.unit.number, region:(data.unit.administrative_path || []).find(x=>x.kind==='region')?.name || '—', file })).sort((a,b)=>String(a.number).localeCompare(String(b.number), 'ru', {numeric:true}))
-  const regions = grouped('region'), tiks = grouped('territorial_commission')
-  const national_id = (first.unit.administrative_path || []).find(x => x.kind === 'national')?.id || first.unit.id
-  const units = [...regions, ...tiks, ...precincts, {id:national_id}]
-  units.forEach(unit => routes.push(`/result/${id}/${encodeURIComponent(unit.id)}`))
-  new Set(loaded.flatMap(({data}) => data.results.map(r => r.entity.id))).forEach(entityId => routes.push(`/entity/${encodeURIComponent(entityId)}`))
-  elections.push({ id, name:first.election.name, date:first.election.date, country:first.election.country, ballot_title:first.ballot.title, national_id, files:loaded.map(x=>x.file), precinct_count:loaded.length, regions, tiks, region_count:regions.length, precincts })
+  return await Promise.all(names.map(async (name) => ({
+    file: `${folderName}/${name}`,
+    data: JSON.parse(await readFile(new URL(name, folder), 'utf8')),
+  })))
 }
-await writeFile(new URL('index.json', root), JSON.stringify({ standard:'vibori-catalog/v1', generated_at:new Date().toISOString(), elections }, null, 2) + '\n')
-await writeFile(new URL('routes.json', root), JSON.stringify([...new Set(routes)], null, 2) + '\n')
+
+for (const id of electionIds) {
+  const precinctFiles = await loadFolder(id, 'precincts')
+  if (!precinctFiles.length) {
+    continue
+  }
+
+  const officialFiles = await loadFolder(id, 'aggregates')
+  const first = precinctFiles[0].data
+  const grouped = (kind) => {
+    const units = new Map()
+    for (const { data } of precinctFiles) {
+      const matches = (data.unit.administrative_path || [])
+        .filter(unit => unit.kind === kind)
+      for (const unit of matches) {
+        const count = (units.get(unit.id)?.count || 0) + 1
+        units.set(unit.id, { ...unit, count })
+      }
+    }
+    return [...units.values()]
+      .sort((left, right) => left.name.localeCompare(right.name, 'ru'))
+  }
+  const precincts = precinctFiles
+    .map(({ file, data }) => ({
+      id: data.unit.id,
+      name: data.unit.name,
+      number: data.unit.number,
+      region: (data.unit.administrative_path || [])
+        .find(unit => unit.kind === 'region')?.name || '—',
+      file,
+      path_ids: (data.unit.administrative_path || []).map(unit => unit.id),
+    }))
+    .sort((left, right) => String(left.number).localeCompare(
+      String(right.number),
+      'ru',
+      { numeric: true },
+    ))
+  const regions = grouped('region')
+  const districts = grouped('district')
+  const tiks = grouped('territorial_commission')
+  const officialResults = Object.fromEntries(officialFiles.map(({ file, data }) => [
+    data.unit.id,
+    { file, unit: data.unit },
+  ]))
+  const nationalId = officialFiles
+    .find(item => item.data.unit.kind === 'national')?.data.unit.id
+    || (first.unit.administrative_path || [])
+      .find(unit => unit.kind === 'national')?.id
+    || first.unit.id
+  const units = [
+    ...regions,
+    ...districts,
+    ...tiks,
+    ...precincts,
+    ...officialFiles.map(item => item.data.unit),
+    { id: nationalId },
+  ]
+  for (const unit of units) {
+    routes.push(`/result/${id}/${encodeURIComponent(unit.id)}`)
+  }
+  const entityIds = new Set(precinctFiles.flatMap(({ data }) => (
+    data.results.map(result => result.entity.id)
+  )))
+  for (const entityId of entityIds) {
+    routes.push(`/entity/${encodeURIComponent(entityId)}`)
+  }
+  elections.push({
+    id,
+    name: first.election.name,
+    date: first.election.date,
+    country: first.election.country,
+    ballot_title: first.ballot.title,
+    national_id: nationalId,
+    files: precinctFiles.map(item => item.file),
+    official_results: officialResults,
+    precinct_count: precinctFiles.length,
+    regions,
+    districts,
+    tiks,
+    region_count: regions.length,
+    precincts,
+  })
+}
+
+const catalog = {
+  standard: 'vibori-catalog/v1',
+  generated_at: new Date().toISOString(),
+  elections,
+}
+await writeFile(
+  new URL('index.json', root),
+  `${JSON.stringify(catalog, null, 2)}\n`,
+)
+await writeFile(
+  new URL('routes.json', root),
+  `${JSON.stringify([...new Set(routes)], null, 2)}\n`,
+)
 console.log(`Catalog updated: ${elections.length} elections`)

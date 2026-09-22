@@ -1,17 +1,116 @@
 <script setup lang="ts">
-const { data: data, error } = await useAsyncData('catalog', catalog)
+import type { CatalogElection, CatalogPrecinct, CatalogUnit } from '~/types/election'
+
+const { data, error } = await useAsyncData('catalog', catalog)
 const electionId = ref('')
-watchEffect(() => { if (!electionId.value && data.value?.elections?.[0]) electionId.value = data.value.elections[0].id })
-const selected = computed(() => data.value?.elections?.find((e:any) => e.id === electionId.value))
-function link(e: any, u: any) { return `/result/${e.id}/${encodeURIComponent(u.id)}` }
+
+watchEffect(() => {
+  const firstElection = data.value?.elections[0]
+  if (!electionId.value && firstElection) {
+    electionId.value = firstElection.id
+  }
+})
+
+const selected = computed(() => (
+  data.value?.elections.find(election => election.id === electionId.value)
+))
+
+function resultLink(
+  election: CatalogElection,
+  unit: CatalogUnit | CatalogPrecinct,
+): string {
+  return `/result/${election.id}/${encodeURIComponent(unit.id)}`
+}
 </script>
-<template><div class="home">
-  <section class="hero"><p class="eyebrow">ОТКРЫТАЯ АРХИВНАЯ СИСТЕМА</p><h1>Результаты,<br><em>которые можно проверить.</em></h1><p>Первичные протоколы УИК, собранные в один понятный обзор. Выберите голосование и уровень комиссии.</p></section>
-  <p v-if="error" class="empty">Не удалось загрузить каталог данных.</p>
-  <section v-else-if="selected" class="catalog"><div class="elections"><label>ГОЛОСОВАНИЕ</label><select v-model="electionId"><option v-for="e in data.elections" :value="e.id" :key="e.id">{{e.name}} · {{e.date}}</option></select></div>
-    <div class="summary"><span>{{selected.precinct_count}} УИК</span><span>{{selected.region_count}} регион{{ selected.region_count === 1 ? '' : 'а' }}</span><span>{{selected.ballot_title}}</span></div>
-    <div class="tree"><details open><summary><b>По регионам</b><span>{{selected.region_count}}</span></summary><div class="branches"><NuxtLink v-for="r in selected.regions" :to="link(selected,r)" :key="r.id">{{r.name}} <small>{{r.count}} УИК</small></NuxtLink></div></details>
-      <details><summary><b>Территориальные комиссии</b><span>{{selected.tiks.length}}</span></summary><div class="branches"><NuxtLink v-for="t in selected.tiks" :to="link(selected,t)" :key="t.id">{{t.name}} <small>{{t.count}} УИК</small></NuxtLink></div></details>
-      <details><summary><b>Участковые комиссии</b><span>{{selected.precinct_count}}</span></summary><div class="branches precincts"><NuxtLink v-for="p in selected.precincts" :to="link(selected,p)" :key="p.id"><small>УИК №{{p.number}}</small>{{p.name}}<small>{{p.region}}</small></NuxtLink></div></details></div>
-  </section>
-</div></template>
+<template>
+  <div class="home">
+    <section class="hero">
+      <p class="eyebrow">ОТКРЫТАЯ АРХИВНАЯ СИСТЕМА</p>
+      <h1>Результаты,<br><em>которые можно проверить.</em></h1>
+      <p>
+        Первичные протоколы УИК, собранные в один понятный обзор. Выберите
+        голосование и уровень комиссии.
+      </p>
+    </section>
+    <p v-if="error" class="empty">Не удалось загрузить каталог данных.</p>
+    <section v-else-if="selected && data" class="catalog">
+      <div class="elections">
+        <label>ГОЛОСОВАНИЕ</label>
+        <select v-model="electionId">
+          <option
+            v-for="election in data.elections"
+            :key="election.id"
+            :value="election.id"
+          >
+            {{ election.name }} · {{ election.date }}
+          </option>
+        </select>
+      </div>
+      <div class="summary">
+        <span>{{ selected.precinct_count }} УИК</span>
+        <span>
+          {{ selected.region_count }} регион{{ selected.region_count === 1 ? '' : 'а' }}
+        </span>
+        <span>{{ selected.ballot_title }}</span>
+      </div>
+      <div class="tree">
+        <details open>
+          <summary><b>По регионам</b><span>{{ selected.region_count }}</span></summary>
+          <div class="branches">
+            <NuxtLink
+              v-for="region in selected.regions"
+              :key="region.id"
+              :to="resultLink(selected, region)"
+            >
+              {{ region.name }} <small>{{ region.count }} УИК</small>
+            </NuxtLink>
+          </div>
+        </details>
+        <details v-if="selected.districts.length">
+          <summary>
+            <b>Избирательные округа</b><span>{{ selected.districts.length }}</span>
+          </summary>
+          <div class="branches">
+            <NuxtLink
+              v-for="district in selected.districts"
+              :key="district.id"
+              :to="resultLink(selected, district)"
+            >
+              {{ district.name }} <small>{{ district.count }} УИК</small>
+            </NuxtLink>
+          </div>
+        </details>
+        <details>
+          <summary>
+            <b>Территориальные комиссии</b><span>{{ selected.tiks.length }}</span>
+          </summary>
+          <div class="branches">
+            <NuxtLink
+              v-for="tik in selected.tiks"
+              :key="tik.id"
+              :to="resultLink(selected, tik)"
+            >
+              {{ tik.name }} <small>{{ tik.count }} УИК</small>
+            </NuxtLink>
+          </div>
+        </details>
+        <details>
+          <summary>
+            <b>Участковые комиссии</b><span>{{ selected.precinct_count }}</span>
+          </summary>
+          <div class="branches precincts">
+            <NuxtLink
+              v-for="precinct in selected.precincts"
+              :key="precinct.id"
+              :to="resultLink(selected, precinct)"
+            >
+              <small>УИК №{{ precinct.number }}</small>
+              {{ precinct.name }}
+              <small>{{ precinct.region }}</small>
+            </NuxtLink>
+          </div>
+        </details>
+      </div>
+    </section>
+  </div>
+</template>
