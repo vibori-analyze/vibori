@@ -25,6 +25,8 @@ nix run .#generate                        # статический сайт: ./d
 
 Конфиг [config/izbirkom.json](config/izbirkom.json) задаёт официальный вход `www.izbirkom.ru/region/izbirkom`, частоту запросов, повторы, предел обхода и признаки таблицы протокола. Импортёр рекурсивно находит доступные кампании (включая ссылки ГАС «Выборы» с `vrn`), бережно обходит их, сохраняет каждый ответ в `raw/izbirkom` и создаёт v1-файлы только для распознанных протоколов УИК. URL и время получения остаются в `source`.
 
+По умолчанию используется `http://rus.sixty9.ru`, заданный в конфиге. Его можно заменить без изменения файла: `nix run .#import-izbirkom -- --proxy http://localhost:8080` или `VIBORI_PROXY=http://localhost:8080 nix run .#import-izbirkom`. Приоритет: `--proxy` → `VIBORI_PROXY` → конфиг. Адрес прокси виден в событии `start`, но лог не содержит его учётных данных.
+
 ```bash
 nix run .#import-izbirkom
 nix run .#build-index

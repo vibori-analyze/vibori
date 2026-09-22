@@ -7,8 +7,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from time import sleep
 from urllib.parse import parse_qs, quote, urljoin, urlparse, urlunparse
-from urllib.request import Request, urlopen
-import hashlib, json, re
+from urllib.request import Request, ProxyHandler, build_opener
+import hashlib, json, os, re
 
 SPACE=re.compile(r'\s+')
 def clean(x): return SPACE.sub(' ',unescape(x or '')).strip()
@@ -34,7 +34,7 @@ def canonical(u):
 def vrn(u):return (parse_qs(urlparse(u).query).get('vrn')or[None])[0]
 def number(s):
  m=re.search(r'(?<!\d)(\d[\d\s ]*)(?!\d)',s);return int(re.sub(r'\D','',m.group(1))) if m else None
-def fetch(url,cfg,raw,emit):
+def fetch(url,cfg,raw,emit,opener):
  path=raw/(hashlib.sha256(url.encode()).hexdigest()+'.html')
  if path.exists():
   emit('cached',url=url,file=str(path));return path.read_text(errors='replace')
@@ -42,7 +42,7 @@ def fetch(url,cfg,raw,emit):
  for attempt in range(cfg['request'].get('retries',1)):
   try:
    emit('fetch',url=url,attempt=attempt+1,retries=cfg['request'].get('retries',1))
-   with urlopen(req,timeout=cfg['request']['timeout_seconds']) as r: body=r.read().decode(r.headers.get_content_charset()or'utf-8',errors='replace')
+   with opener.open(req,timeout=cfg['request']['timeout_seconds']) as r: body=r.read().decode(r.headers.get_content_charset()or'utf-8',errors='replace')
    break
   except Exception as error:
    if attempt+1 == cfg['request'].get('retries',1): raise
@@ -66,15 +66,19 @@ def protocol(page,url,campaign,cfg):
  n=m.group(1);reg=(re.search(cfg['protocol']['region_pattern'],text,re.I)or[campaign['name']])[0];tik=(re.search(cfg['protocol']['tik_pattern'],text,re.I)or['Не указана'])[0];eid=campaign['id']
  return {'standard':'vibori-election-result/v1','source':{'url':url,'retrieved_at':datetime.now(timezone.utc).isoformat(),'publisher':'ЦИК России / ГАС «Выборы»'},'election':{'id':eid,'name':campaign['name'],'country':'RU','date':'1970-01-01','scope':'other'},'unit':{'id':f'{eid}-uik-{n}','name':f'УИК №{n}','number':n,'kind':'precinct','administrative_path':[{'id':'ru','name':'Российская Федерация','kind':'national'},{'id':'region-'+stable(reg),'name':reg,'kind':'region'},{'id':'tik-'+stable(tik),'name':tik,'kind':'territorial_commission'}]},'ballot':{'id':'main','title':campaign['name'],'kind':'other'},'turnout':turnout,'results':[{'entity':{'id':'candidate-'+stable(name),'name':name,'type':'candidate'},'votes':votes}for name,votes in entities]}
 def main():
- a=ArgumentParser();a.add_argument('--config',default='config/izbirkom.json');a.add_argument('--out',default='public/data');a.add_argument('--raw',default='raw/izbirkom');a.add_argument('--max-pages',type=int);a.add_argument('--only-vrn');a.add_argument('--dry-run',action='store_true');args=a.parse_args();cfg=json.loads(Path(args.config).read_text());raw=Path(args.raw);raw.mkdir(parents=True,exist_ok=True);out=Path(args.out);limit=args.max_pages or cfg['discovery']['max_pages'];queue=[canonical(x)for x in cfg['seed_urls']];seen=set();campaigns={};imported=0
+ a=ArgumentParser();a.add_argument('--config',default='config/izbirkom.json');a.add_argument('--out',default='public/data');a.add_argument('--raw',default='raw/izbirkom');a.add_argument('--max-pages',type=int);a.add_argument('--only-vrn');a.add_argument('--proxy',help='HTTP(S)-прокси, например http://rus.sixty9.ru');a.add_argument('--dry-run',action='store_true');args=a.parse_args();cfg=json.loads(Path(args.config).read_text());raw=Path(args.raw);raw.mkdir(parents=True,exist_ok=True);out=Path(args.out);limit=args.max_pages or cfg['discovery']['max_pages'];queue=[canonical(x)for x in cfg['seed_urls']];seen=set();campaigns={};imported=0
+ proxy=args.proxy or os.environ.get('VIBORI_PROXY') or cfg['request'].get('proxy') or None
+ if proxy and urlparse(proxy).scheme not in ('http','https'):raise SystemExit('Прокси должен начинаться с http:// или https://')
+ opener=build_opener(ProxyHandler({'http':proxy,'https':proxy}) if proxy else ProxyHandler({}))
  def emit(event,**data): print(json.dumps({'event':event,**data},ensure_ascii=False),flush=True)
- emit('start',limit=limit,seeds=len(queue),dry_run=args.dry_run)
+ proxy_public=(urlparse(proxy).scheme+'://'+urlparse(proxy).hostname) if proxy else None
+ emit('start',limit=limit,seeds=len(queue),dry_run=args.dry_run,proxy=proxy_public)
  while queue and len(seen)<limit:
   url=queue.pop(0)
   if url in seen or(args.only_vrn and vrn(url)!=args.only_vrn):continue
   seen.add(url)
   if len(seen)==1 or len(seen)%cfg['discovery'].get('progress_every_pages',25)==0: emit('progress',pages=len(seen),queued=len(queue),campaigns=len(campaigns),protocols=imported,limit=limit)
-  try:body=fetch(url,cfg,raw,emit)
+  try:body=fetch(url,cfg,raw,emit,opener)
   except Exception as e:emit('fetch_error',url=url,error=str(e));continue
   page=Page();page.feed(body);key=vrn(url);text=clean(' '.join(page.text))
   if key:campaigns.setdefault(key,{'id':'izbirkom-'+key,'name':text[:cfg['discovery']['campaign_title_length']]or'Кампания '+key})
