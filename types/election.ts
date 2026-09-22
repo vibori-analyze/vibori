@@ -83,6 +83,7 @@ export interface CatalogPrecinct {
   region: string
   file: string
   path_ids: string[]
+  source_index: number
 }
 
 export interface OfficialResultEntry {
@@ -95,16 +96,27 @@ export interface CatalogElection {
   name: string
   date: string
   country: string
+  scope?: 'national' | 'regional' | 'municipal' | 'other'
   ballot_title: string
   national_id: string
+  precinct_count: number
+  region_count: number
+}
+
+export interface ElectionCatalogDetail extends CatalogElection {
   files: string[]
   official_results?: Record<string, OfficialResultEntry>
-  precinct_count: number
   regions: CatalogUnit[]
   districts: CatalogUnit[]
   tiks: CatalogUnit[]
-  region_count: number
   precincts: CatalogPrecinct[]
+}
+
+export interface PrecinctAnalysis {
+  standard: 'vibori-precinct-analysis/v1'
+  entities: ElectionEntity[]
+  points: Array<[turnout: number, results: number[]]>
+  national_clusters: Array<Array<[turnout: number, votes: number, count: number]>>
 }
 
 export interface ElectionCatalog {

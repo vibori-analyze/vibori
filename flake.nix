@@ -17,14 +17,16 @@
       indexer = pkgs.writeShellApplication {
         name = "vibori-build-index";
         runtimeInputs = [ pkgs.nodejs_22 ];
-        text = ''exec node ${./scripts/build-index.mjs} "''${1:-public/data}"'';
+        text = ''exec node --expose-gc ${./scripts/build-index.mjs} "''${1:-public/data}"'';
       };
       generator = pkgs.writeShellApplication {
         name = "vibori-generate";
         runtimeInputs = [ pkgs.nix ];
         text = ''
           nix develop --command npm ci
-          nix develop --command npm run generate
+          VIBORI_STATIC_BUILD=1 nix develop --command npm run generate
+          mkdir -p .output/public/data
+          cp -a public/data/. .output/public/data/
           target="''${1:-dist}"
           if [ -e "$target" ] && [ ! -L "$target" ]; then
             echo "Refusing to replace non-symlink target: $target" >&2

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CatalogElection, CatalogPrecinct, CatalogUnit } from '~/types/election'
+import type { CatalogElection, CatalogPrecinct, CatalogUnit, ElectionCatalogDetail } from '~/types/election'
 
 const { data, error } = await useAsyncData('catalog', catalog)
 const electionId = ref('')
@@ -11,12 +11,26 @@ watchEffect(() => {
   }
 })
 
-const selected = computed(() => (
-  data.value?.elections.find(election => election.id === electionId.value)
-))
+const selected = ref<ElectionCatalogDetail | null>(null)
+const selectedError = ref<Error | null>(null)
+const precinctLimit = ref(500)
+
+watch(electionId, async (id) => {
+  precinctLimit.value = 500
+  selected.value = null
+  selectedError.value = null
+  if (!id) {
+    return
+  }
+  try {
+    selected.value = await electionCatalog(id)
+  } catch (error: unknown) {
+    selectedError.value = error instanceof Error ? error : new Error(String(error))
+  }
+})
 
 function resultLink(
-  election: CatalogElection,
+  election: CatalogElection | ElectionCatalogDetail,
   unit: CatalogUnit | CatalogPrecinct,
 ): string {
   return `/result/${election.id}/${encodeURIComponent(unit.id)}`
@@ -33,7 +47,7 @@ function resultLink(
       </p>
     </section>
     <p v-if="error" class="empty">Не удалось загрузить каталог данных.</p>
-    <section v-else-if="selected && data" class="catalog">
+    <section v-else-if="data" class="catalog">
       <div class="elections">
         <label>ГОЛОСОВАНИЕ</label>
         <select v-model="electionId">
@@ -46,6 +60,9 @@ function resultLink(
           </option>
         </select>
       </div>
+      <p v-if="selectedError" class="empty">Не удалось загрузить данные голосования.</p>
+      <p v-else-if="!selected" class="empty">Загрузка данных голосования…</p>
+      <template v-else>
       <div class="summary">
         <span>{{ selected.precinct_count }} УИК</span>
         <span>
@@ -100,7 +117,7 @@ function resultLink(
           </summary>
           <div class="branches precincts">
             <NuxtLink
-              v-for="precinct in selected.precincts"
+              v-for="precinct in selected.precincts.slice(0, precinctLimit)"
               :key="precinct.id"
               :to="resultLink(selected, precinct)"
             >
@@ -109,8 +126,16 @@ function resultLink(
               <small>{{ precinct.region }}</small>
             </NuxtLink>
           </div>
+          <button
+            v-if="precinctLimit < selected.precincts.length"
+            type="button"
+            @click="precinctLimit += 500"
+          >
+            Показать ещё {{ Math.min(500, selected.precincts.length - precinctLimit) }} УИК
+          </button>
         </details>
       </div>
+      </template>
     </section>
   </div>
 </template>

@@ -8,6 +8,9 @@ const staticRoutes: string[] = existsSync(routeFile)
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: true },
+  dir: {
+    public: process.env.VIBORI_STATIC_BUILD ? 'public-app' : 'public',
+  },
   app: {
     baseURL: process.env.NUXT_APP_BASE_URL || '/',
     head: {
@@ -15,6 +18,13 @@ export default defineNuxtConfig({
       meta: [{ name: 'viewport', content: 'width=device-width, initial-scale=1' }],
     },
   },
-  nitro: { prerender: { routes: staticRoutes } },
-  css: ['~/assets/main.css'],
+  nitro: {
+    prerender: {
+      routes: staticRoutes,
+      // The election archive can contain hundreds of thousands of JSON files.
+      // They are copied as public assets, but do not need to be treated as routes.
+      ignoreUnprefixedPublicAssets: true,
+    },
+  },
+  css: ['~/assets/main.css', '~/assets/shpilkin.css'],
 })

@@ -21,17 +21,29 @@ const turnout = computed(() => (
     ? total.value.turnout.issued / total.value.turnout.registered * 100
     : 0
 ))
+const isPrecinct = computed(() => unit.value?.kind === 'precinct')
+const analysis = ref()
+watch(unit, async (selectedUnit) => {
+  if (selectedUnit && selectedUnit.kind !== 'precinct' && !analysis.value) {
+    analysis.value = await precinctAnalysis(electionId.value)
+  }
+}, { immediate: true })
+const { data: electionDetail } = await useAsyncData(
+  () => `election-${electionId.value}`,
+  () => electionCatalog(electionId.value),
+)
+const election = computed(() => official.value?.election || files.value[0]?.election)
 </script>
 <template>
   <div v-if="error" class="empty">Результаты не найдены.</div>
-  <template v-else-if="files.length && unit">
+  <template v-else-if="(files.length || official) && unit">
     <NuxtLink class="back" to="/">← Все голосования</NuxtLink>
     <section class="result-title">
       <p class="eyebrow">
         {{ unit.kind === 'precinct' ? 'УЧАСТКОВАЯ КОМИССИЯ' : 'СВОДНЫЙ УРОВЕНЬ' }}
       </p>
       <h1>{{ unit.name }}</h1>
-      <p>{{ files[0]?.election.name }} · {{ files[0]?.ballot.title }}</p>
+      <p>{{ election?.name }} · {{ official?.ballot.title || files[0]?.ballot.title }}</p>
     </section>
     <section class="stats">
       <div>
@@ -62,7 +74,12 @@ const turnout = computed(() => (
       </div>
     </section>
     <ResultTable :rows="total.rows" :valid="total.turnout.valid" />
-    <ShareChart :files="picked" />
+    <ShpilkinChart
+      v-if="!isPrecinct && analysis && electionDetail"
+      :analysis="analysis"
+      :election="electionDetail"
+      :unit-id="unitId"
+    />
   </template>
   <div v-else class="empty">Загрузка результатов…</div>
 </template>

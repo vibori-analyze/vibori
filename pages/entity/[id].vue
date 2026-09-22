@@ -21,7 +21,7 @@ watchEffect(async () => {
 
   const collected: EntityElectionResult[] = []
   for (const election of catalogData.value.elections) {
-    const files = await topLevelResultsFor(election)
+    const files = await topLevelResultsFor(await electionCatalog(election.id))
     const total = aggregate(files)
     const result = total.rows.find(row => row.id === id.value)
     if (result) {

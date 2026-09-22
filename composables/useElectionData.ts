@@ -1,23 +1,16 @@
 import type {
   AggregateResult,
   AggregatedRow,
-  CatalogElection,
+  ElectionCatalogDetail,
   ElectionCatalog,
   ElectionUnit,
+  PrecinctAnalysis,
   ResultFile,
   Turnout,
 } from '~/types/election'
 
 export async function catalog(): Promise<ElectionCatalog> {
   return await $fetch<ElectionCatalog>('/data/index.json')
-}
-
-function findElection(catalogData: ElectionCatalog, electionId: string): CatalogElection {
-  const election = catalogData.elections.find(item => item.id === electionId)
-  if (!election) {
-    throw new Error('Голосование не найдено')
-  }
-  return election
 }
 
 async function fetchResultFiles(
@@ -30,32 +23,38 @@ async function fetchResultFiles(
 }
 
 export async function resultsFor(electionId: string): Promise<ResultFile[]> {
-  const c = await catalog()
-  const election = findElection(c, electionId)
+  const election = await electionCatalog(electionId)
   return await fetchResultFiles(electionId, election.files)
+}
+
+export async function electionCatalog(electionId: string): Promise<ElectionCatalogDetail> {
+  return await $fetch<ElectionCatalogDetail>(`/data/${electionId}/index.json`)
+}
+
+export async function precinctAnalysis(electionId: string): Promise<PrecinctAnalysis> {
+  return await $fetch<PrecinctAnalysis>(`/data/${electionId}/analysis.json`)
 }
 
 export async function resultBundleFor(
   electionId: string,
   unitId: string,
 ): Promise<{ files: ResultFile[], official: ResultFile | null }> {
-  const c = await catalog()
-  const election = findElection(c, electionId)
+  const election = await electionCatalog(electionId)
   const entry = election.official_results?.[unitId]
   const precinctFiles = election.precincts
     .filter(precinct => precinct.id === unitId || precinct.path_ids.includes(unitId))
     .map(precinct => precinct.file)
-  const [files, official] = await Promise.all([
-    fetchResultFiles(electionId, precinctFiles),
-    entry
-      ? $fetch<ResultFile>(`/data/${electionId}/${entry.file}`)
-      : Promise.resolve(null),
-  ])
-  return { files, official }
+  if (entry) {
+    return {
+      files: [],
+      official: await $fetch<ResultFile>(`/data/${electionId}/${entry.file}`),
+    }
+  }
+  return { files: await fetchResultFiles(electionId, precinctFiles), official: null }
 }
 
 export async function topLevelResultsFor(
-  election: CatalogElection,
+  election: ElectionCatalogDetail,
 ): Promise<ResultFile[]> {
   const official = election.official_results?.[election.national_id]
   if (official) {

@@ -1,0 +1,11 @@
+.shpilkin-chart{margin:48px 0 82px;padding:24px;background:#20221f;color:#f6f0e7}
+.shpilkin-chart .eyebrow{color:#f08256}
+.shpilkin-chart h3{font-family:'Playfair Display',serif;font-size:30px;margin:0}
+.shpilkin-chart select{color:#f6f0e7;border-color:#a39b8e}
+.chart-subtitle{color:#aaa69e;font-size:12px;margin:16px 0 0}
+.shpilkin-chart canvas{display:block;width:100%;height:auto;margin:16px 0 0;cursor:crosshair}
+.chart-legend{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
+.chart-legend button{display:flex;align-items:center;gap:6px;background:none;border:1px solid #51524c;color:#aaa69e;padding:6px 8px;font:inherit;font-size:11px;cursor:pointer;max-width:230px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.chart-legend button.active{color:#f6f0e7;border-color:#f6f0e7}
+.chart-legend i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+@media(max-width:650px){.shpilkin-chart{margin-left:-18px;margin-right:-18px;padding:20px 18px}.chart-legend{max-height:140px;overflow:auto}}

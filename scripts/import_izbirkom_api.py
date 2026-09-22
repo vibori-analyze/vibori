@@ -277,7 +277,7 @@ def import_batch(
                 if not dry_run:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(
-                        json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+                        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n",
                         encoding="utf-8",
                     )
                 totals["protocols"] += 1
