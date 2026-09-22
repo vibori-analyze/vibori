@@ -23,10 +23,26 @@ const turnout = computed(() => (
 ))
 const isPrecinct = computed(() => unit.value?.kind === 'precinct')
 const analysis = ref()
-watch([unit, electionId], async ([selectedUnit]) => {
+const chartSlot = ref<HTMLElement>()
+const chartVisible = ref(false)
+const chartLoading = ref(false)
+let chartObserver: IntersectionObserver | undefined
+onMounted(() => {
+  if (!chartSlot.value) return
+  chartObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) {
+      chartVisible.value = true
+      chartObserver?.disconnect()
+    }
+  }, { rootMargin: '600px 0px' })
+  chartObserver.observe(chartSlot.value)
+})
+onBeforeUnmount(() => chartObserver?.disconnect())
+watch([unit, electionId, chartVisible], async ([selectedUnit, , visible]) => {
   analysis.value = undefined
-  if (selectedUnit && selectedUnit.kind !== 'precinct') {
-    analysis.value = await chartAnalysis(electionId.value, selectedUnit)
+  if (selectedUnit && selectedUnit.kind !== 'precinct' && visible) {
+    chartLoading.value = true
+    try { analysis.value = await chartAnalysis(electionId.value, selectedUnit) } finally { chartLoading.value = false }
   }
 }, { immediate: true })
 const { data: electionDetail } = await useAsyncData(
@@ -75,12 +91,15 @@ const election = computed(() => official.value?.election || files.value[0]?.elec
       </div>
     </section>
     <ResultTable :rows="total.rows" :valid="total.turnout.valid" />
-    <ShpilkinChart
-      v-if="!isPrecinct && analysis && electionDetail"
-      :analysis="analysis"
-      :entities="electionDetail.entities"
-      :unit-id="unitId"
-    />
+    <section v-if="!isPrecinct" ref="chartSlot" class="chart-lazy-shell">
+      <div v-if="!analysis || chartLoading" class="chart-loading"><span class="loading-spinner" />Загрузка графиков…</div>
+      <ShpilkinChart
+        v-else-if="electionDetail"
+        :analysis="analysis"
+        :entities="electionDetail.entities"
+        :unit-id="unitId"
+      />
+    </section>
   </template>
   <div v-else class="empty">Загрузка результатов…</div>
 </template>
