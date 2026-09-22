@@ -5,7 +5,7 @@ A static election-results viewer. Nuxt generates the application and the browser
 The UI follows the precinct → territorial commission → region → country hierarchy. It provides result tables, turnout, vote-share charts, and cross-election candidate and party pages.
 
 ```bash
-nix run .#import-izbirkom -- --max-elections 1 --max-precincts 1 --dry-run
+nix run .#import-izbirkom -- --election-id 587813923 --max-precincts 1 --dry-run
 nix run .#import-izbirkom                 # import every accessible election
 nix run .#build-index                     # build precinct/commission/region catalog
 nix run .#check                           # Python lint/types and TypeScript types
@@ -41,4 +41,4 @@ nix run .#import-izbirkom -- --proxy socks5h://127.0.0.1:1080
 nix run .#build-index
 ```
 
-For a small connectivity check, use `--max-elections 1 --max-precincts 1 --dry-run`. `--workers` controls concurrent report requests and `--progress-every` controls tree progress frequency. The importer emits JSON Lines events including `election_page`, `election`, `tree_progress`, `protocol`, `protocol_unavailable`, errors, and `complete`. A missing higher-level protocol is recorded as unavailable and activates the UI fallback; other API failures remain errors. Missing data is never represented as an official result.
+For a small connectivity check, use `--election-id 587813923 --max-precincts 1 --dry-run`. `--workers` controls concurrent report requests and `--progress-every` controls tree progress frequency. The importer emits JSON Lines events including `election_page`, `election`, `tree_progress`, `protocol`, `protocol_unavailable`, errors, and `complete`. A missing higher-level protocol is recorded as unavailable and activates the UI fallback; other API failures remain errors. Missing data is never represented as an official result.
