@@ -30,7 +30,22 @@ const pointsByEntity = computed<Point[][]>(() => {
   return output
 })
 const points = computed<Point[]>(() => [...activeIndexes.value].flatMap((entity: number) => pointsByEntity.value[entity] || []))
-const absoluteSeries = computed(() => [...activeIndexes.value].map(entity => ({ entity, points: (props.analysis.absolute[entity] || []).map(([turnout, votes, count]) => ({ turnout: turnout / 100, votes, count })) })))
+type AbsoluteMode = 'raw' | 'tenth' | 'one'
+type AbsoluteTuple = [number, number, number]
+const absoluteMode = ref<AbsoluteMode>('tenth')
+const rawAbsolute = computed<AbsoluteTuple[][]>(() => {
+  if (national.value) return (props.analysis as NationalChartAnalysis).absoluteRaw || []
+  const analysis = props.analysis as RegionalChartAnalysis
+  const indexes = analysis.units[props.unitId] || analysis.points.map((_, index) => index)
+  const output = props.entities.map(() => [] as AbsoluteTuple[])
+  for (const sourceIndex of indexes) {
+    const [turnout, , results] = analysis.points[sourceIndex]
+    for (let index = 0; index < results.length; index += 2) output[results[index]]?.push([turnout, results[index + 1], 1])
+  }
+  return output
+})
+const absoluteBuckets = computed<AbsoluteTuple[][]>(() => absoluteMode.value === 'raw' ? rawAbsolute.value : absoluteMode.value === 'one' ? props.analysis.absolute1 : props.analysis.absolute)
+const absoluteSeries = computed<Array<{ entity: number, points: Array<{ turnout: number, votes: number, count: number }> }>>(() => [...activeIndexes.value].map((entity: number) => ({ entity, points: (absoluteBuckets.value[entity] || []).map(([turnout, votes, count]: AbsoluteTuple) => ({ turnout: turnout / 100, votes, count })) })))
 const maxVotes = computed(() => Math.max(...absoluteSeries.value.flatMap(series => series.points.map(point => point.votes)), 1))
 function draw(): void {
   const element = canvas.value; const context = element?.getContext('2d'); if (!element || !context) return
@@ -76,6 +91,7 @@ function clearShareHover(): void { shareHover.value = null; tooltip.value = ''; 
 function clearAbsoluteHover(): void { absoluteHover.value = null; drawCrosshair(absoluteOverlay.value, null, 1, value => Math.round(value).toLocaleString('ru-RU')) }
 function toggle(id: string): void { active.value = active.value.includes(id) ? active.value.filter(value => value !== id) : [...active.value, id] }
 function resetFilters(): void { active.value = entities.value.map(entity => entity.id) }
+function setAbsoluteMode(mode: string): void { if (mode === 'raw' || mode === 'tenth' || mode === 'one') absoluteMode.value = mode }
 watch([points, absoluteSeries], () => nextTick(() => { draw(); drawAbsolute() }), { flush: 'post' }); onMounted(() => { draw(); drawAbsolute() })
 </script>
-<template><section class="shpilkin-chart"><div class="chart-head"><div><span class="eyebrow">АНАЛИЗ УИК</span><h3>Метод Шпилькина</h3></div><button class="chart-reset" type="button" @click="resetFilters">Сбросить фильтры</button></div><div class="chart-layout"><div class="chart-main"><p class="chart-title">Явка (%) / доля голосов (%) — облако УИК</p><div class="chart-canvas"><canvas ref="canvas" width="640" height="640" /><canvas ref="shareOverlay" class="chart-overlay" width="640" height="640" @mousemove="nearest" @mouseleave="clearShareHover" /></div><p class="chart-note">{{ tooltip || 'Точки совпадающих протоколов становятся плотнее.' }}</p><p class="chart-title">Явка (%) / абсолютное число голосов</p><div class="chart-canvas"><canvas ref="absoluteCanvas" width="640" height="640" /><canvas ref="absoluteOverlay" class="chart-overlay" width="640" height="640" @mousemove="absoluteMove" @mouseleave="clearAbsoluteHover" /></div></div><aside class="chart-legend"><span class="legend-title">Показывать</span><button v-for="entity in entities" :key="entity.id" type="button" :class="{ active: active.includes(entity.id) }" @click="toggle(entity.id)"><i :style="{ background: entity.color }" /><span>{{ entity.name }}</span></button></aside></div></section></template>
+<template><section class="shpilkin-chart"><div class="chart-head"><div><span class="eyebrow">АНАЛИЗ УИК</span><h3>Метод Шпилькина</h3></div><button class="chart-reset" type="button" @click="resetFilters">Сбросить фильтры</button></div><div class="chart-layout"><div class="chart-main"><p class="chart-title">Явка (%) / доля голосов (%) — облако УИК</p><div class="chart-canvas"><canvas ref="canvas" width="640" height="640" /><canvas ref="shareOverlay" class="chart-overlay" width="640" height="640" @mousemove="nearest" @mouseleave="clearShareHover" /></div><p class="chart-note">{{ tooltip || 'Точки совпадающих протоколов становятся плотнее.' }}</p><div class="absolute-title"><p class="chart-title">Явка (%) / абсолютное число голосов</p><div class="absolute-switch" role="group" aria-label="Агрегация абсолютного графика"><button v-for="mode in [{ id: 'raw', label: 'Без агрегации' }, { id: 'tenth', label: 'Шаг 0,1%' }, { id: 'one', label: 'Шаг 1%' }]" :key="mode.id" type="button" :class="{ active: absoluteMode === mode.id }" @click="setAbsoluteMode(mode.id)">{{ mode.label }}</button></div></div><div class="chart-canvas"><canvas ref="absoluteCanvas" width="640" height="640" /><canvas ref="absoluteOverlay" class="chart-overlay" width="640" height="640" @mousemove="absoluteMove" @mouseleave="clearAbsoluteHover" /></div></div><aside class="chart-legend"><span class="legend-title">Показывать</span><button v-for="entity in entities" :key="entity.id" type="button" :class="{ active: active.includes(entity.id) }" @click="toggle(entity.id)"><i :style="{ background: entity.color }" /><span>{{ entity.name }}</span></button></aside></div></section></template>

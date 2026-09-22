@@ -114,6 +114,8 @@ export interface NationalChartAnalysis {
   entities: ElectionEntity[]
   clusters: Array<Array<[turnout: number, votes: number, count: number]>>
   absolute: Array<Array<[turnout: number, votes: number, count: number]>>
+  absolute1: Array<Array<[turnout: number, votes: number, count: number]>>
+  absoluteRaw?: Array<Array<[turnout: number, votes: number, count: number]>>
 }
 
 export interface RegionalChartAnalysis {
@@ -122,6 +124,7 @@ export interface RegionalChartAnalysis {
   units: Record<string, number[]>
   clusters: Array<Array<[turnout: number, votes: number, count: number]>>
   absolute: Array<Array<[turnout: number, votes: number, count: number]>>
+  absolute1: Array<Array<[turnout: number, votes: number, count: number]>>
 }
 
 export interface ElectionCatalog {
