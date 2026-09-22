@@ -8,7 +8,7 @@
       pkgs = nixpkgs.legacyPackages.${system};
       importer = pkgs.writeShellApplication {
         name = "vibori-import-izbirkom";
-        runtimeInputs = [ pkgs.python3 pkgs.python3Packages.pysocks ];
+        runtimeInputs = [ (pkgs.python3.withPackages (pythonPackages: [ pythonPackages.pysocks ])) ];
         text = ''exec python3 ${./scripts/izbirkom.py} --config ${./config/izbirkom.json} "$@"'';
       };
       indexer = pkgs.writeShellApplication {
