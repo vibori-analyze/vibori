@@ -4,7 +4,7 @@
 .shpilkin-chart select{color:#1d232b;border-color:#aeb8c5;background:#fff}
 .chart-subtitle{color:#697586;font-size:12px;margin:20px 0 0}
 .chart-title{font-size:14px;font-weight:700;margin:22px 0 0;color:#1d232b}
-.shpilkin-chart canvas{display:block;width:100%;height:auto;margin:4px 0 0;background:#fff;cursor:crosshair}
+.shpilkin-chart canvas{display:block;width:100%;height:auto;margin:4px 0 0;background:#fff}.chart-canvas{position:relative}.chart-canvas .chart-overlay{position:absolute;inset:0;cursor:crosshair;background:transparent}
 .chart-note{color:#697586;font-size:11px}
 .chart-legend{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px;color:#586577;font-size:11px}
 .chart-layout{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:22px;align-items:start}.chart-main{min-width:0}.chart-legend{display:flex;flex-direction:column;gap:10px;margin-top:22px}.chart-legend button{display:flex;align-items:flex-start;gap:7px;width:100%;text-align:left;border:1px solid #d9dfe8;background:#fff;color:#697586;padding:8px 9px;font:inherit;font-size:11px;line-height:1.35;cursor:pointer;transition:border-color .12s ease,background .12s ease,color .12s ease}.chart-legend button.active{border-color:#356ae6;color:#1d232b;background:#f3f7ff}.chart-legend .legend-title{font-size:11px;color:#697586;font-weight:800;text-transform:uppercase;letter-spacing:1px}
