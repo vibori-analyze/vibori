@@ -21,23 +21,13 @@ async function readResult(electionId, folderName, name) {
 }
 
 function clustersFor(points, entityCount) {
-  const maximums = Array(entityCount).fill(0)
-  for (const [, valid, results] of points) {
-    for (let index = 0; index < results.length; index += 2) {
-      const share = valid ? Math.round(results[index + 1] / valid * 10000) : 0
-      maximums[results[index]] = Math.max(maximums[results[index]], share)
-    }
-  }
   const clusters = Array.from({ length: entityCount }, () => new Map())
   for (const [turnout, valid, results] of points) {
     for (let index = 0; index < results.length; index += 2) {
       const entity = results[index]
-      const step = Math.max(1, Math.ceil(maximums[entity] / 120))
-      const x = Math.round(turnout / 100) * 100
       const share = valid ? Math.round(results[index + 1] / valid * 10000) : 0
-      const y = Math.round(share / step) * step
-      const key = `${x}:${y}`
-      const current = clusters[entity].get(key) || [x, y, 0]
+      const key = `${turnout}:${share}`
+      const current = clusters[entity].get(key) || [turnout, share, 0]
       current[2] += 1
       clusters[entity].set(key, current)
     }

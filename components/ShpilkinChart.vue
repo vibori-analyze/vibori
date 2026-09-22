@@ -36,8 +36,8 @@ function draw(): void {
   context.clearRect(0, 0, width, height); context.font = '11px Manrope, sans-serif'; context.strokeStyle = '#51524c'; context.fillStyle = '#aaa69e'
   for (let step = 0; step <= 4; step += 1) { const y = top + (height - top - bottom) * step / 4; context.beginPath(); context.moveTo(left, y); context.lineTo(width - right, y); context.stroke(); context.fillText(`${(maxShare * (4 - step) / 4).toFixed(1)}%`, 0, y + 4) }
   for (let step = 0; step <= 5; step += 1) context.fillText(`${step * 20}%`, left + (width - left - right) * step / 5 - 10, height - 12)
-  context.fillStyle = color
-  for (const point of points.value) { const x = left + Math.min(100, Math.max(0, point.turnout)) / 100 * (width - left - right); const y = height - bottom - point.share / maxShare * (height - top - bottom); context.globalAlpha = Math.min(.82, .16 + Math.log2(point.count + 1) / 7); context.beginPath(); context.arc(x, y, Math.min(6, 1 + Math.sqrt(point.count)), 0, Math.PI * 2); context.fill() }
+  context.fillStyle = color; context.globalAlpha = .34
+  for (const point of points.value) { const x = left + Math.min(100, Math.max(0, point.turnout)) / 100 * (width - left - right); const y = height - bottom - point.share / maxShare * (height - top - bottom); context.beginPath(); context.arc(x, y, 1.5, 0, Math.PI * 2); context.fill() }
   context.globalAlpha = 1
 }
 function nearest(event: MouseEvent): void {
@@ -54,8 +54,8 @@ function drawAbsolute(): void {
   context.clearRect(0, 0, width, height); context.font = '11px Manrope, sans-serif'; context.strokeStyle = '#51524c'; context.fillStyle = '#aaa69e'
   for (let step = 0; step <= 4; step += 1) { const y = top + (height - top - bottom) * step / 4; context.beginPath(); context.moveTo(left, y); context.lineTo(width - right, y); context.stroke(); context.fillText(Math.round(maxVotes * (4 - step) / 4).toLocaleString('ru-RU'), 0, y + 4) }
   for (let step = 0; step <= 5; step += 1) context.fillText(`${step * 20}%`, left + (width - left - right) * step / 5 - 10, height - 12)
-  context.fillStyle = color; context.globalAlpha = .86
-  for (const point of absolutePoints.value) { const x = left + point.turnout / 100 * (width - left - right); const y = height - bottom - point.votes / maxVotes * (height - top - bottom); context.beginPath(); context.arc(x, y, Math.min(7, 1.5 + Math.sqrt(point.count)), 0, Math.PI * 2); context.fill() }
+  context.strokeStyle = color; context.lineWidth = 1.5; context.globalAlpha = .9; context.beginPath()
+  absolutePoints.value.forEach((point, index) => { const x = left + point.turnout / 100 * (width - left - right); const y = height - bottom - point.votes / maxVotes * (height - top - bottom); if (index === 0) context.moveTo(x, y); else context.lineTo(x, y) }); context.stroke()
   context.globalAlpha = 1
 }
 watch([points, absolutePoints], () => nextTick(() => { draw(); drawAbsolute() }), { flush: 'post' }); onMounted(() => { draw(); drawAbsolute() })
