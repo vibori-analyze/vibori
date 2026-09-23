@@ -7,6 +7,7 @@
   "properties": {
     "id": { "type": "string" },
     "name": { "type": "string" },
+    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
     "logo": { "type": "string" },
     "source": { "type": "object", "required": ["url", "retrieved_at"], "properties": { "url": { "format": "uri" }, "retrieved_at": { "format": "date-time" }, "publisher": { "type": "string" } } }
   }

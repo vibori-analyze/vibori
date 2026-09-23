@@ -146,6 +146,7 @@ export interface PartyRecord {
   id: string
   name: string
   logo: string
+  color?: string
   aliases?: string[]
   source: { url: string, retrieved_at: string, publisher?: string }
 }

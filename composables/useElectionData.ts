@@ -41,7 +41,8 @@ export function partyFor(
   id?: string,
   name?: string,
 ): PartyRecord | undefined {
-  const byId = list.find(party => party.id === id)
+  const normalizedId = id?.replace(/^party-/, '')
+  const byId = list.find(party => party.id === id || party.id.replace(/^party-/, '') === normalizedId)
   if (byId || !name) return byId
   const normalized = name.toLocaleUpperCase('ru').replaceAll('Ё', 'Е')
   return list.find(party => party.aliases?.some(alias => normalized.includes(alias.toLocaleUpperCase('ru').replaceAll('Ё', 'Е'))))

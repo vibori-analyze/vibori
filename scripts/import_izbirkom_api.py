@@ -25,6 +25,15 @@ TreeEntry: TypeAlias = tuple[JsonObject, list[JsonObject]]
 TreeStackEntry: TypeAlias = tuple[JsonObject, list[JsonObject], str | None]
 BatchEntry: TypeAlias = tuple[JsonObject, list[JsonObject], int, Path]
 PARTY_LOGOS: list[JsonObject] = []
+FALLBACK_PARTY_COLORS = {
+    "party-fair-russia": "#d52b1e",
+    "party-kprf": "#cc1f2f",
+    "party-ldpr": "#1e4b9b",
+    "party-new-people": "#6e4bca",
+    "party-rodina": "#b21f31",
+    "party-united-russia": "#006ab3",
+    "party-yabloko": "#3d9c35",
+}
 
 
 def emit(event: str, **data: object) -> None:
@@ -125,6 +134,22 @@ def normalize_logo(content: bytes, mime_type: str) -> bytes:
     return b"\n".join(line.rstrip(b" \t\r") for line in content.splitlines()) + b"\n"
 
 
+def logo_color(content: bytes, mime_type: str, fallback: str) -> str:
+    """Choose the most frequent saturated SVG color that remains visible on white."""
+    if mime_type != "image/svg+xml":
+        return fallback
+    counts: dict[str, int] = {}
+    for match in re.finditer(rb"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?", content):
+        raw = match.group().decode().lower()
+        color = "#" + "".join(channel * 2 for channel in raw[1:]) if len(raw) == 4 else raw
+        red, green, blue = (int(color[offset : offset + 2], 16) for offset in (1, 3, 5))
+        brightest, darkest = max(red, green, blue), min(red, green, blue)
+        if brightest - darkest < 36 or (red * 299 + green * 587 + blue * 114) / 1000 > 205:
+            continue
+        counts[color] = counts.get(color, 0) + 1
+    return max(counts, key=lambda color: counts[color]) if counts else fallback
+
+
 def import_party_logos(
     opener: OpenerDirector,
     output: Path,
@@ -141,6 +166,12 @@ def import_party_logos(
     for party in PARTY_LOGOS:
         current = records.get(party["id"])
         if current and (output / current["logo"]).exists():
+            logo_path = output / current["logo"]
+            current["color"] = logo_color(
+                logo_path.read_bytes(),
+                mimetypes.guess_type(logo_path.name)[0] or "",
+                FALLBACK_PARTY_COLORS.get(str(party["id"]), "#356ae6"),
+            )
             continue
         content, mime_type, source_url = mediawiki_logo(
             opener, party["mediawiki_file"], user_agent
@@ -157,6 +188,11 @@ def import_party_logos(
             "id": party["id"],
             "name": party["name"],
             "aliases": party["patterns"],
+            "color": logo_color(
+                content,
+                mime_type,
+                FALLBACK_PARTY_COLORS.get(str(party["id"]), "#356ae6"),
+            ),
             "logo": relative,
             "source": {
                 "url": source_url,
