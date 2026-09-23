@@ -84,10 +84,12 @@ for (const id of electionIds) {
         computed.set(unit.id, current)
       }
       precincts.push({ id: data.unit.id, name: data.unit.name, number: data.unit.number, region: units.get('region')?.name || '—' })
-      const firstLevel = units.get('district') || units.get('region')
+      const firstLevel = units.get('region') || units.get('district')
+      const district = units.get('district')
       const tik = units.get('territorial_commission')
       addChild(units.get('national'), firstLevel)
-      addChild(firstLevel, tik)
+      if (district) addChild(firstLevel, district)
+      addChild(district || firstLevel, tik)
       if (tik) {
         const list = tikPrecincts.get(tik.id) || []
         list.push({ id: data.unit.id, name: data.unit.name, number: data.unit.number, region: units.get('region')?.name || '—' })

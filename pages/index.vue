@@ -15,6 +15,8 @@ const search = ref('')
 const page = ref(1)
 const pageSize = 48
 const current = computed(() => trail.value.at(-1))
+const mapUnits = computed(() => units.value.filter((unit): unit is CatalogUnit => 'kind' in unit))
+const mapRegion = computed(() => current.value?.kind === 'region' ? current.value : undefined)
 const normalize = (value: string) => value.toLocaleLowerCase('ru').replaceAll('ё', 'е').trim()
 const searchable = computed(() => units.value.map(unit => ({ unit, text: normalize([unit.name, unit.number || '', 'region' in unit ? unit.region : ''].join(' ')) })))
 const matches = computed(() => {
@@ -77,6 +79,7 @@ function chooseElection(event: Event): void {
 function resultLink(id: string): string {
   return '/result/' + encodeURIComponent(electionId.value) + '/' + encodeURIComponent(id)
 }
+function selectMapUnit(unit: CatalogUnit): void { browse(trail.value.length, unit) }
 const count = (value: number) => value.toLocaleString('ru-RU')
 const ballotLabel = (kind?: string) => kind === 'party_list' ? 'Партийный бюллетень' : kind === 'single_member' ? 'Кандидаты по округам' : ''
 useHead({ title: 'Выборы — найти результаты своего участка' })
@@ -109,6 +112,7 @@ useHead({ title: 'Выборы — найти результаты своего 
             <template v-for="(unit, index) in trail" :key="unit.id"><span aria-hidden="true">/</span><button :aria-current="index === trail.length - 1 ? 'location' : undefined" @click="browse(index + 1)">{{ unit.name }}</button></template>
           </nav>
           <div class="territory-heading"><h3>{{ current?.name || 'Территории голосования' }}</h3><NuxtLink v-if="current" :to="resultLink(current.id)">Результаты комиссии ↗</NuxtLink></div>
+          <TerritoryMap v-if="!loading && !loadError && (!current || current.kind === 'region') && mapUnits.length" :units="mapUnits" :selected-region="mapRegion" @select="selectMapUnit" />
           <label class="search-field" for="territory-search"><span aria-hidden="true">⌕</span><input id="territory-search" v-model="search" type="search" :placeholder="current?.kind === 'territorial_commission' ? 'Номер или название УИК' : 'Название территории или номер округа'" :disabled="loading" autocomplete="off"><span class="sr-only">Поиск в текущем списке</span><kbd aria-hidden="true">{{ matches.length }}</kbd></label>
           <p v-if="loading" class="status" role="status">Загружаем комиссии…</p>
           <p v-else-if="loadError" class="status" role="alert">Не удалось загрузить комиссии. <button @click="retry++">Повторить</button><button @click="browse(0)">Все территории</button></p>

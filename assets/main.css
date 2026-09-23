@@ -48,6 +48,18 @@ footer span { float: right; font-weight: 400; color: var(--muted); font-size: 12
 .breadcrumbs [aria-current] { color: var(--ink); font-weight: 700; }
 .territory-heading h3 { margin: 0 0 16px; font-size: 23px; letter-spacing: -.5px; }
 .territory-heading a { font-size: 13px; color: var(--red); white-space: nowrap; }
+.territory-map { margin-bottom: 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow: hidden; }
+.territory-map svg { display: block; width: 100%; max-height: 520px; background: #f4f6ef; }
+.territory-map path { fill: #dfe7d4; stroke: #fff; stroke-width: 1.2; cursor: pointer; transition: fill .15s; }
+.territory-map path:hover, .territory-map path:focus { fill: #a9c384; outline: none; }
+.territory-map .region-outline { fill: #e3ead8; stroke: #93a67b; stroke-width: 2; cursor: default; }
+.district-marker { cursor: pointer; }
+.district-marker circle { fill: var(--red); stroke: white; stroke-width: 3; }
+.district-marker:hover circle, .district-marker:focus circle { fill: #203f20; }
+.district-marker text { fill: white; font-size: 14px; font-weight: 800; text-anchor: middle; pointer-events: none; }
+.regional-map { position: relative; }
+.regional-map > p, .map-attribution { margin: 0; padding: 8px 12px; color: var(--muted); font-size: 11px; }
+.map-attribution { border-top: 1px solid var(--line); }
 .search-field { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #b7beaa; border-radius: 8px; padding: 4px 16px; }
 .search-field > span:first-child { font-size: 28px; color: var(--red); }
 .search-field input { width: 100%; min-width: 0; border: 0; background: none; padding: 13px 0; color: var(--ink); }
@@ -71,6 +83,7 @@ footer span { float: right; font-weight: 400; color: var(--muted); font-size: 12
 .archive-note strong { font-size: 21px; }
 .archive-note p { margin: 0; color: var(--muted); font-size: 13px; max-width: 660px; }
 .back { display: inline-block; margin-top: 28px; color: var(--red); font-weight: 700; font-size: 13px; }
+.upper-result { margin-left: 22px; }
 .result-title { padding: 24px 0 32px; border-bottom: 2px solid var(--ink); }
 .result-title h1 { font-size: clamp(32px, 5vw, 56px); line-height: 1.1; letter-spacing: -2px; margin: 0; }
 .result-title > p:last-child { color: var(--muted); }

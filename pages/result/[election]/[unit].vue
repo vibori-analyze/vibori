@@ -22,6 +22,18 @@ const turnout = computed(() => (
     : 0
 ))
 const isPrecinct = computed(() => unit.value?.kind === 'precinct')
+const upperUnit = computed(() => {
+  const path = unit.value?.administrative_path || []
+  const target = unit.value?.kind === 'precinct'
+    ? 'territorial_commission'
+    : unit.value?.kind === 'territorial_commission'
+      ? (path.some(item => item.kind === 'district') ? 'district' : 'region')
+      : unit.value?.kind === 'district' || unit.value?.kind === 'region'
+        ? 'national'
+        : undefined
+  return target ? [...path].reverse().find(item => item.kind === target) : undefined
+})
+const upperLabel = computed(() => unit.value?.kind === 'precinct' ? 'К результатам ТИК' : unit.value?.kind === 'territorial_commission' ? 'К результатам ОИК' : 'К результатам ЦИК')
 const analysis = shallowRef()
 const chartError = ref(false)
 const chartRetry = ref(0)
@@ -67,6 +79,7 @@ const election = computed(() => official.value?.election || files.value[0]?.elec
   <div v-if="error" class="empty">Результаты не найдены.</div>
   <template v-else-if="(files.length || official) && unit">
     <NuxtLink class="back" :to="{ path: '/', query: { election: electionId } }">← К территориям голосования</NuxtLink>
+    <NuxtLink v-if="upperUnit" class="back upper-result" :to="`/result/${encodeURIComponent(electionId)}/${encodeURIComponent(upperUnit.id)}`">↑ {{ upperLabel }}</NuxtLink>
     <section class="result-title">
       <p class="eyebrow">
         {{ unit.kind === 'precinct' ? 'УЧАСТКОВАЯ КОМИССИЯ' : 'СВОДНЫЙ УРОВЕНЬ' }}

@@ -49,6 +49,7 @@ const points = computed<Point[]>(() => {
   }
   return output
 })
+const pointRadius = computed(() => Math.max(1, Math.min(4.5, 18 / Math.sqrt(Math.max(1, points.value.length)))))
 type AbsoluteMode = 'raw' | 'tenth' | 'one'
 type AbsoluteTuple = [number, number, number]
 const absoluteMode = ref<AbsoluteMode>('tenth')
@@ -102,7 +103,7 @@ function draw(): void {
   context.clearRect(0, 0, width, height); context.font = '11px Arial, sans-serif'; context.strokeStyle = '#eef2f7'; context.fillStyle = '#697586'
   for (let step = 0; step <= 4; step += 1) { const y = top + (height - top - bottom) * step / 4; context.beginPath(); context.moveTo(left, y); context.lineTo(width - right, y); context.stroke(); context.fillText(`${(maxShare * (4 - step) / 4).toFixed(0)}%`, 0, y + 4) }
   for (let step = 0; step <= 5; step += 1) context.fillText(`${step * 20}%`, left + (width - left - right) * step / 5 - 10, height - 12)
-  for (const point of points.value) { const x = left + Math.min(100, Math.max(0, point.turnout)) / 100 * (width - left - right); const y = height - bottom - point.share / maxShare * (height - top - bottom); context.fillStyle = palette[point.entity % palette.length] || palette[0]; context.globalAlpha = 1 - Math.pow(1 - .2, point.count); context.fillRect(Math.round(x), Math.round(y), 1, 1) }
+  for (const point of points.value) { const x = left + Math.min(100, Math.max(0, point.turnout)) / 100 * (width - left - right); const y = height - bottom - point.share / maxShare * (height - top - bottom); context.fillStyle = palette[point.entity % palette.length] || palette[0]; context.globalAlpha = Math.max(.45, 1 - Math.pow(1 - .2, point.count)); context.beginPath(); context.arc(x, y, pointRadius.value + Math.min(2, Math.log2(point.count) * .35), 0, Math.PI * 2); context.fill() }
   context.globalAlpha = 1
 }
 function nearest(event: MouseEvent): void {

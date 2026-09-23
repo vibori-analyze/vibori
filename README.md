@@ -1,5 +1,9 @@
 # Vibori
 
+## Map data
+
+The static region map uses a normalized, simplified copy of the GADM-based federal-subject GeoJSON published by [rnekrasov-msk/geojson](https://github.com/rnekrasov-msk/geojson). Rebuild it with `python3 scripts/prepare_map_data.py SOURCE public/data/maps/russia-regions.geojson`. District names and numbers come from the public [Idite na district catalog](https://iditena.org/) and can be rebuilt from a saved page with `python3 scripts/prepare_district_data.py SOURCE public/data/maps/districts-2026.json`. District boundaries for the 2026 scheme are not published as reusable GeoJSON, so the regional view deliberately shows selectable district markers over the subject outline rather than inventing boundary polygons.
+
 A static election-results viewer. Nuxt generates the application and the browser reads only JSON from `public/data`. Official higher-level protocols are preferred when available; otherwise the browser computes the result from lower-level protocols. The site can therefore be published on GitHub Pages without a server or database.
 
 The UI follows the precinct → territorial commission → region → country hierarchy. It provides result tables, turnout, vote-share charts, and cross-election candidate and party pages.
