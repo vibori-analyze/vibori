@@ -141,10 +141,15 @@ def logo_color(content: bytes, mime_type: str, fallback: str) -> str:
     counts: dict[str, int] = {}
     for match in re.finditer(rb"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?", content):
         raw = match.group().decode().lower()
-        color = "#" + "".join(channel * 2 for channel in raw[1:]) if len(raw) == 4 else raw
+        color = (
+            "#" + "".join(channel * 2 for channel in raw[1:]) if len(raw) == 4 else raw
+        )
         red, green, blue = (int(color[offset : offset + 2], 16) for offset in (1, 3, 5))
         brightest, darkest = max(red, green, blue), min(red, green, blue)
-        if brightest - darkest < 36 or (red * 299 + green * 587 + blue * 114) / 1000 > 205:
+        if (
+            brightest - darkest < 36
+            or (red * 299 + green * 587 + blue * 114) / 1000 > 205
+        ):
             continue
         counts[color] = counts.get(color, 0) + 1
     return max(counts, key=lambda color: counts[color]) if counts else fallback
