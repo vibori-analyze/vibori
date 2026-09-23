@@ -125,13 +125,25 @@ function rings(geometry: Geometry): number[][][] {
   return geometry.type === 'Polygon' ? geometry.coordinates as number[][][] : (geometry.coordinates as number[][][][]).flat()
 }
 function projectedPath(feature: Feature, regional = false): string {
-  const all = rings(feature.geometry)
+  // Preserve Polygon boundaries. Flattening MultiPolygon rings into one path is
+  // valid only when every ring is an independent subpath; explicitly closing
+  // each ring also avoids accidental joins across the Chukotka dateline.
+  const all = rings(feature.geometry).filter(ring => ring.length >= 4)
   const project = (point: number[]) => {
     const longitude = (point[0] < 0 ? point[0] + 360 : point[0]) * Math.PI / 180
     const latitude = Math.max(-85, Math.min(85, point[1])) * Math.PI / 180
     return [longitude, Math.log(Math.tan(Math.PI / 4 + latitude / 2))]
   }
-  const projected = all.map(ring => ring.map(project))
+  const projected = all.map(ring => {
+    const points = ring.map(project)
+    // Some source rings end on +180 and restart on -180 (or vice versa).
+    // Keep the closing edge at the same projected longitude to avoid a
+    // spurious stroke across the map when the polygon is closed.
+    if (points.length > 1 && Math.abs(points[0]![0] - points.at(-1)![0]) > Math.PI) {
+      points[points.length - 1] = [...points[0]!]
+    }
+    return points
+  })
   const points = projected.flat()
   if (!points.length) return ''
   const globalWest = project([18, 40])[0]
