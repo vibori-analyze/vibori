@@ -26,15 +26,17 @@ function rings(geometry: Geometry): number[][][] {
 function projectedPath(feature: Feature, regional = false): string {
   const all = rings(feature.geometry)
   const project = (point: number[]) => {
-    const longitude = point[0] < 0 ? point[0] + 360 : point[0]
+    const longitude = (point[0] < 0 ? point[0] + 360 : point[0]) * Math.PI / 180
     const latitude = Math.max(-85, Math.min(85, point[1])) * Math.PI / 180
     return [longitude, Math.log(Math.tan(Math.PI / 4 + latitude / 2))]
   }
   const projected = all.map(ring => ring.map(project))
   const points = projected.flat()
   if (!points.length) return ''
-  const minX = regional ? Math.min(...points.map(point => point[0])) : 18
-  const maxX = regional ? Math.max(...points.map(point => point[0])) : 190
+  const globalWest = project([18, 40])[0]
+  const globalEast = project([190, 40])[0]
+  const minX = regional ? Math.min(...points.map(point => point[0])) : globalWest
+  const maxX = regional ? Math.max(...points.map(point => point[0])) : globalEast
   const globalSouth = project([18, 40])[1]
   const globalNorth = project([18, 82])[1]
   const minY = regional ? Math.min(...points.map(point => point[1])) : globalSouth
