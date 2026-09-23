@@ -211,9 +211,11 @@ footer { font-size: 18px; letter-spacing: -.04em; }
 .map-layer-control select { min-height: 43px; width: 100%; font-size: 14px; font-weight: 700; }
 .map-loading { padding: 8px 24px; margin: 0; color: var(--muted); font-size: 12px; }
 .territory-map svg { background: #eff4f2; max-height: 540px; }
-.territory-map path { stroke: #fff; stroke-width: 1.35; }
+.territory-map path { stroke: #d0d9d7; stroke-width: .45; paint-order: stroke fill; }
+.territory-map path.dateline-region { stroke: none; }
 .territory-map path:hover, .territory-map path:focus { filter: brightness(.82); stroke: var(--ink); stroke-width: 2; }
-.territory-map .region-outline { fill: none; stroke: #176b68; stroke-width: 3; }
+.territory-map .region-outline { stroke: #176b68; stroke-width: 2; paint-order: stroke fill; }
+.territory-map .region-outline.dateline-region, .territory-map path.dateline-region:hover, .territory-map path.dateline-region:focus { stroke: none; }
 .district-marker circle { stroke: #fff; stroke-width: 3; }
 .district-marker:hover circle, .district-marker:focus circle { filter: brightness(.82); stroke: var(--ink); }
 .district-marker text { fill: var(--ink); font-weight: 700; text-anchor: middle; }

@@ -8,6 +8,11 @@ const { data: bundle, error } = await useAsyncData(
 )
 const file = computed<ResultFile | undefined>(() => bundle.value?.official || bundle.value?.files[0])
 const total = computed(() => file.value ? aggregate([file.value]) : undefined)
+const isNationalCandidate = computed(() => file.value?.unit.kind === 'national' && file.value.ballot.kind === 'single_member')
+const { data: partyData } = await useAsyncData('parties', parties, { deep: false })
+const displayRows = computed(() => total.value ? (isNationalCandidate.value ? nationalPartyRows(total.value, candidates.value || [], partyData.value || []) : total.value.rows) : [])
+const displayAnalysis = computed(() => analysis.value && isNationalCandidate.value && 'entities' in analysis.value
+  ? nationalPartyAnalysis(analysis.value, candidates.value || [], partyData.value || []) : analysis.value)
 const turnout = computed(() => total.value?.turnout.registered
   ? total.value.turnout.issued / total.value.turnout.registered * 100 : 0)
 const invalidPct = computed(() => {
@@ -48,12 +53,12 @@ watch(file, async (selected, _, onCleanup) => {
       <div><span>ИСТОЧНИК ИТОГА</span><b>{{ bundle?.official ? 'ЦИК РФ' : 'РАСЧЁТ' }}</b><small>{{ bundle?.official ? 'официальный сводный протокол' : 'сумма доступных протоколов' }}</small></div>
     </section>
     <p v-if="file.source?.url" class="source-link"><a :href="file.source.url" target="_blank" rel="noopener noreferrer">Исходный протокол ↗</a> · Получен {{ file.source.retrieved_at?.slice(0, 10) }}</p>
-    <div class="section-heading"><div><p class="eyebrow">ПРОТОКОЛ</p><h2>Результаты голосования</h2></div><span>{{ total.rows.length }} позиций</span></div>
-    <ResultTable :rows="total.rows" :valid="total.turnout.valid" :election-id="electionId" :unit-id="unitId" />
+    <div class="section-heading"><div><p class="eyebrow">ПРОТОКОЛ</p><h2>Результаты голосования</h2></div><span>{{ displayRows.length }} позиций</span></div>
+    <ResultTable :party-only="isNationalCandidate" :rows="displayRows" :valid="total.turnout.valid" :election-id="electionId" :unit-id="unitId" />
     <section v-if="file.unit.kind !== 'precinct'" class="inline-analysis">
       <p v-if="analysisLoading" class="chart-loading"><span class="loading-spinner" />Загрузка графиков…</p>
       <p v-else-if="analysisFailed" class="chart-loading">Не удалось загрузить графики.</p>
-      <LazyShpilkinChart v-else-if="analysis && electionDetail" :analysis="analysis" :entities="electionDetail.entities" :candidates="candidates || []" :unit-id="unitId" />
+      <LazyShpilkinChart v-else-if="displayAnalysis && electionDetail" :analysis="displayAnalysis" :entities="'entities' in displayAnalysis ? displayAnalysis.entities : electionDetail.entities" :candidates="candidates || []" :unit-id="unitId" />
     </section>
   </section>
   <p v-else-if="error" class="status">Итоги для этой территории пока не опубликованы.</p>

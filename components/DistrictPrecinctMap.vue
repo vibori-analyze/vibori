@@ -48,7 +48,7 @@ const circles = computed(() => metrics.value.map((item, index) => {
   const x = 55 + (column + (row % 2) * .35) / Math.max(1, columns - .3) * 850
   const rows = Math.ceil(metrics.value.length / columns)
   const y = 55 + (row + ((column * 7) % 5) / 9) / Math.max(1, rows - .25) * 370
-  return { ...item, x, y, radius: 2 + Math.sqrt(item.votes / maxVotes.value) * 10, color: item.party?.color || '#798398' }
+  return { ...item, x, y, radius: 4 + Math.sqrt(item.votes / maxVotes.value) * 16, color: item.party?.color || '#798398' }
 }))
 function open(precinct: CatalogPrecinct): void { void router.push(`/result/${encodeURIComponent(props.electionId)}/${encodeURIComponent(precinct.id)}`) }
 </script>

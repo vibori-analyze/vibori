@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AggregatedRow } from '~/types/election'
 
-const props = defineProps<{ rows: AggregatedRow[], valid: number, electionId: string, unitId: string }>()
+const props = defineProps<{ rows: AggregatedRow[], valid: number, electionId: string, unitId: string, partyOnly?: boolean }>()
 const { data: partyData } = await useAsyncData('parties', parties, { deep: false })
 const { data: candidateData } = await useAsyncData(
   () => `candidates-${props.electionId}`,
@@ -36,19 +36,19 @@ watch([search, () => props.rows], () => { page.value = 1 })
   <section aria-label="Результаты голосования">
     <label v-if="rows.length > pageSize" class="search-field" for="result-search">
       <span aria-hidden="true">⌕</span>
-      <input id="result-search" v-model="search" type="search" placeholder="Найти кандидата или партию">
+      <input id="result-search" v-model="search" type="search" :placeholder="partyOnly ? 'Найти партию' : 'Найти кандидата или партию'">
       <span class="sr-only">Поиск по результатам</span>
       <kbd>{{ filtered.length }}</kbd>
     </label>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Кандидат / список</th><th aria-sort="descending">Голоса ↓</th><th>Доля</th></tr></thead>
+        <thead><tr><th>{{ partyOnly ? 'Партия' : 'Кандидат / список' }}</th><th aria-sort="descending">Голоса ↓</th><th>Доля</th></tr></thead>
         <tbody>
           <tr v-for="result in visible" :key="result.id">
             <td>
               <span class="result-entity">
                 <PartyLogo :party="logoFor(result)" />
-                <NuxtLink :to="{ path: '/entity/' + encodeURIComponent(result.id), query: { election: electionId, unit: unitId } }" class="entity">{{ result.name }}</NuxtLink>
+                <NuxtLink v-if="result.type !== 'other'" :to="{ path: '/entity/' + encodeURIComponent(result.id), query: { election: electionId, unit: unitId } }" class="entity">{{ result.name }}</NuxtLink><span v-else>{{ result.name }}</span>
               </span>
               <small v-if="result.type === 'candidate' && partyNameFor(result)">
                 <NuxtLink

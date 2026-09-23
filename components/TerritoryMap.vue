@@ -127,16 +127,7 @@ function projectedPath(feature: Feature, regional = false): string {
     const latitude = Math.max(-85, Math.min(85, point[1])) * Math.PI / 180
     return [longitude, Math.log(Math.tan(Math.PI / 4 + latitude / 2))]
   }
-  const projected = all.map(ring => {
-    const points = ring.map(project)
-    // Some source rings end on +180 and restart on -180 (or vice versa).
-    // Keep the closing edge at the same projected longitude to avoid a
-    // spurious stroke across the map when the polygon is closed.
-    if (points.length > 1 && Math.abs(points[0]![0] - points.at(-1)![0]) > Math.PI) {
-      points[points.length - 1] = [...points[0]!]
-    }
-    return points
-  })
+  const projected = all.map(ring => ring.map(project))
   const points = projected.flat()
   if (!points.length) return ''
   const globalWest = project([18, 40])[0]
@@ -153,6 +144,7 @@ function projectedPath(feature: Feature, regional = false): string {
   const offsetX = (960 - width * scale) / 2; const offsetY = (480 - height * scale) / 2
   return projected.map(ring => ring.map((point, index) => `${index ? 'L' : 'M'}${(offsetX + (point[0] - minX) * scale).toFixed(1)},${(offsetY + (maxY - point[1]) * scale).toFixed(1)}`).join(' ') + 'Z').join(' ')
 }
+const isDatelineRegion = (feature: Feature) => normalize(feature.properties.name) === 'чукотский'
 const regions = computed(() => (data.value?.features || []).map(feature => ({ feature, unit: unitByName.value.get(normalize(feature.properties.name)) })).filter(item => item.unit))
 const positions = computed<Position[]>(() => props.units.map((unit, index) => {
   const columns = Math.ceil(Math.sqrt(props.units.length * 1.7))
@@ -170,16 +162,16 @@ const positions = computed<Position[]>(() => props.units.map((unit, index) => {
     <p v-if="metricsLoading" class="map-loading" role="status">Загружаем показатели карты…</p>
     <svg v-if="!selectedRegion" viewBox="0 0 960 480" role="img" aria-labelledby="russia-map-title">
       <title id="russia-map-title">Выберите регион России</title>
-      <path v-for="item in regions" :key="item.unit!.id" :d="projectedPath(item.feature)" :style="{ fill: mapColor(item.unit!) }" fill-rule="evenodd" tabindex="0" role="button" :aria-label="mapDescription(item.unit!)" @click="emit('select', item.unit!)" @keydown.enter="emit('select', item.unit!)" @keydown.space.prevent="emit('select', item.unit!)"><title>{{ mapDescription(item.unit!) }}</title></path>
+      <path v-for="item in regions" :key="item.unit!.id" :d="projectedPath(item.feature)" :style="{ fill: mapColor(item.unit!) }" :class="{ 'dateline-region': isDatelineRegion(item.feature) }" fill-rule="evenodd" tabindex="0" role="button" :aria-label="mapDescription(item.unit!)" @click="emit('select', item.unit!)" @keydown.enter="emit('select', item.unit!)" @keydown.space.prevent="emit('select', item.unit!)"><title>{{ mapDescription(item.unit!) }}</title></path>
     </svg>
     <div v-else class="regional-map">
       <svg viewBox="0 0 960 480" role="img" :aria-label="`Округа: ${selectedRegion.name}`">
+        <path v-if="selectedFeature" class="region-outline" :class="{ 'dateline-region': isDatelineRegion(selectedFeature) }" :d="projectedPath(selectedFeature, true)" :style="{ fill: mapColor(selectedRegion) }" fill-rule="evenodd" pointer-events="none" />
         <g v-for="(unit, index) in units" :key="unit.id" class="district-marker" tabindex="0" role="button" :aria-label="mapDescription(unit)" @click="emit('select', unit)" @keydown.enter="emit('select', unit)" @keydown.space.prevent="emit('select', unit)">
-          <circle :cx="positions[index]?.x" :cy="positions[index]?.y" r="25" :style="{ fill: mapColor(unit) }" />
+          <circle :cx="positions[index]?.x" :cy="positions[index]?.y" r="34" :style="{ fill: mapColor(unit) }" />
           <text :x="positions[index]?.x" :y="positions[index]?.y + 5">{{ unit.kind === 'district' ? unit.count.toLocaleString('ru-RU') : index + 1 }}</text>
           <title>{{ mapDescription(unit) }}</title>
         </g>
-        <path v-if="selectedFeature" class="region-outline" :d="projectedPath(selectedFeature, true)" fill-rule="evenodd" pointer-events="none" />
       </svg>
       <p>Округа показаны схематично: положение маркеров не соответствует их географическим границам. Контур — граница субъекта.</p>
     </div>
