@@ -105,8 +105,8 @@ export async function tikPrecinctPage(electionId: string, tikId: string, page: n
   return staticData<CatalogPrecinct[]>(`${electionId}/tree/${tikId}-${page}.json`)
 }
 
-export async function resultBundleFor(electionId: string, unitId: string): Promise<{ files: ResultFile[], official: ResultFile | null }> {
-  const election = await electionCatalog(electionId)
+export async function resultBundleFor(electionId: string, unitId: string, detail?: ElectionCatalogDetail): Promise<{ files: ResultFile[], official: ResultFile | null }> {
+  const election = detail || await electionCatalog(electionId)
   const officialFile = election.official_results[unitId]
   if (officialFile) {
     return { files: [], official: await staticData<ResultFile>(`${electionId}/${officialFile}`) }

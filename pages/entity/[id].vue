@@ -119,11 +119,13 @@ const formatDate = (value?: string) => value ? new Date(`${value}T00:00:00`).toL
     <p v-else class="status">Список кандидатов для этих выборов не опубликован в импортированных данных.</p>
   </section>
 
-  <div class="table-wrap entity-results"><table>
+  <div class="section-heading entity-results-heading"><div><p class="eyebrow">АРХИВ</p><h2>Результаты по голосованиям</h2></div></div>
+  <div v-if="rows.length" class="table-wrap entity-results"><table>
     <thead><tr><th>Голосование</th><th>Голоса</th><th>Доля</th><th>УИК</th></tr></thead>
     <tbody><tr v-for="result in rows" :key="result.election.id">
       <td><NuxtLink :to="`/result/${result.election.id}/${result.election.national_id}`" class="entity">{{ result.election.name }}</NuxtLink></td>
       <td>{{ result.votes.toLocaleString('ru-RU') }}</td><td><b>{{ result.percent.toFixed(2) }}%</b></td><td>{{ result.units }}</td>
     </tr></tbody>
   </table></div>
+  <p v-else-if="!loading" class="status">Результаты для этого участника пока не найдены.</p>
 </template>

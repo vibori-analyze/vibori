@@ -4,7 +4,7 @@ import type { CatalogPrecinct, CatalogUnit } from '~/types/election'
 const route = useRoute()
 const router = useRouter()
 const { data, error, refresh } = await useAsyncData('catalog', catalog, { deep: false })
-const electionId = computed(() => String(route.query.election || data.value?.elections[0]?.id || ''))
+const electionId = computed(() => String(route.query.election || data.value?.elections.find(item => item.ballot_kind === 'party_list')?.id || data.value?.elections[0]?.id || ''))
 const election = computed(() => data.value?.elections.find(item => item.id === electionId.value))
 const trail = shallowRef<CatalogUnit[]>([])
 const units = shallowRef<Array<CatalogUnit | CatalogPrecinct>>([])
@@ -88,32 +88,34 @@ useHead({ title: 'Выборы — найти результаты своего 
 <template>
   <div class="home">
     <section class="home-hero">
-      <p class="eyebrow">ОТКРЫТЫЙ АРХИВ ВЫБОРОВ</p>
-      <h1>Каждый голос.<br><span>Каждый участок.</span></h1>
-      <p>Найдите свою территорию, посмотрите результаты и проверьте исходный протокол.</p>
-      <a class="primary-link" href="#catalog">Найти результаты <span aria-hidden="true">↗</span></a>
-      <div class="hero-mark" aria-hidden="true">%</div>
+      <div class="hero-content"><p class="eyebrow">ОТКРЫТЫЙ АРХИВ РЕЗУЛЬТАТОВ</p>
+      <h1>Результаты выборов.<br><span>До каждого участка.</span></h1>
+      <p>Исследуйте голосование на карте, найдите свою комиссию и откройте протокол с источником данных.</p>
+      <a class="primary-link" href="#catalog">Исследовать результаты <span aria-hidden="true">↗</span></a></div>
+      <div class="hero-panel" aria-hidden="true"><span>01 / 03</span><div class="hero-panel-art">◎<span>●</span>◎<span>●</span>◎</div><p>Выборы → территория → протокол</p></div>
     </section>
     <section id="catalog" class="browser" aria-label="Каталог результатов">
       <div v-if="error" class="status" role="alert">Не удалось загрузить каталог. <button @click="refresh()">Повторить</button></div>
       <template v-else-if="data">
         <div class="browser-heading">
-          <div><p class="eyebrow">РЕЗУЛЬТАТЫ ГОЛОСОВАНИЯ</p><h2>Найдите свою комиссию</h2></div>
+          <div><p class="eyebrow">ИССЛЕДОВАТЬ АРХИВ</p><h2>Выберите голосование и территорию</h2></div>
           <span class="archive-badge">{{ data.elections.length }} голосования в архиве</span>
         </div>
-        <label for="election">Голосование</label>
+        <label for="election">1. Голосование</label>
         <select id="election" class="election-select" :value="electionId" @change="chooseElection">
           <option v-for="item in data.elections" :key="item.id" :value="item.id">{{ ballotLabel(item.ballot_kind) || item.ballot_title }} · {{ item.date }} · {{ item.name }}</option>
         </select>
         <template v-if="election">
-          <div class="archive-summary"><span>{{ count(election.precinct_count) }} УИК в архиве</span><span>{{ election.region_count }} регионов</span><NuxtLink :to="resultLink(election.national_id)">Сводные результаты ↗</NuxtLink></div>
+          <div class="archive-summary"><span><strong>{{ count(election.precinct_count) }}</strong> УИК в архиве</span><span><strong>{{ election.region_count }}</strong> регионов</span><NuxtLink :to="resultLink(election.national_id)">Итоги по стране ↗</NuxtLink></div>
+          <p class="step-label">2. Территория</p>
           <nav class="breadcrumbs" aria-label="Путь к комиссии">
             <button :aria-current="!trail.length ? 'location' : undefined" @click="browse(0)">Все территории</button>
             <template v-for="(unit, index) in trail" :key="unit.id"><span aria-hidden="true">/</span><button :aria-current="index === trail.length - 1 ? 'location' : undefined" @click="browse(index + 1)">{{ unit.name }}</button></template>
           </nav>
           <div class="territory-heading"><h3>{{ current?.name || 'Территории голосования' }}</h3><NuxtLink v-if="current" :to="resultLink(current.id)">Результаты комиссии ↗</NuxtLink></div>
-          <TerritoryMap v-if="!loading && !loadError && (!current || current.kind === 'region') && mapUnits.length" :units="mapUnits" :selected-region="mapRegion" @select="selectMapUnit" />
-          <label class="search-field" for="territory-search"><span aria-hidden="true">⌕</span><input id="territory-search" v-model="search" type="search" :placeholder="current?.kind === 'territorial_commission' ? 'Номер или название УИК' : 'Название территории или номер округа'" :disabled="loading" autocomplete="off"><span class="sr-only">Поиск в текущем списке</span><kbd aria-hidden="true">{{ matches.length }}</kbd></label>
+          <TerritoryMap v-if="!loading && !loadError && (!current || current.kind === 'region') && mapUnits.length" :units="mapUnits" :selected-region="mapRegion" :election-id="electionId" @select="selectMapUnit" />
+          <label class="search-label" for="territory-search">{{ current?.kind === 'territorial_commission' ? '3. Найдите участок' : 'Найдите территорию в списке' }}</label>
+          <div class="search-field"><span aria-hidden="true">⌕</span><input id="territory-search" v-model="search" type="search" :placeholder="current?.kind === 'territorial_commission' ? 'Номер или название УИК' : 'Название территории или номер округа'" :disabled="loading" autocomplete="off"><kbd aria-hidden="true">{{ matches.length }}</kbd></div>
           <p v-if="loading" class="status" role="status">Загружаем комиссии…</p>
           <p v-else-if="loadError" class="status" role="alert">Не удалось загрузить комиссии. <button @click="retry++">Повторить</button><button @click="browse(0)">Все территории</button></p>
           <template v-else>
