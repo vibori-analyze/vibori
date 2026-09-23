@@ -73,6 +73,11 @@ const { data: electionDetail } = await useAsyncData(
   () => `election-${electionId.value}`,
   () => electionCatalog(electionId.value),
 )
+const { data: candidateData } = await useAsyncData(
+  () => `candidates-${electionId.value}`,
+  () => electionCandidates(electionId.value),
+  { deep: false },
+)
 const election = computed(() => official.value?.election || files.value[0]?.election)
 </script>
 <template>
@@ -125,6 +130,7 @@ const election = computed(() => official.value?.election || files.value[0]?.elec
         v-else-if="electionDetail"
         :analysis="analysis"
         :entities="electionDetail.entities"
+        :candidates="candidateData || []"
         :unit-id="unitId"
       />
     </section>

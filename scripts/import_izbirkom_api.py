@@ -109,7 +109,7 @@ def mediawiki_logo(
             "origin": "*",
         }
     )
-    api_url = f"https://ru.wikipedia.org/w/api.php?{query}"
+    api_url = f"https://commons.wikimedia.org/w/api.php?{query}"
     request = Request(
         api_url, headers={"Accept": "application/json", "User-Agent": user_agent}
     )
@@ -178,9 +178,13 @@ def import_party_logos(
                 FALLBACK_PARTY_COLORS.get(str(party["id"]), "#356ae6"),
             )
             continue
-        content, mime_type, source_url = mediawiki_logo(
-            opener, party["mediawiki_file"], user_agent
-        )
+        try:
+            content, mime_type, source_url = mediawiki_logo(
+                opener, party["mediawiki_file"], user_agent
+            )
+        except (HTTPError, KeyError, OSError, ValueError) as error:
+            emit("party_logo_error", party=party["id"], error=str(error))
+            continue
         content = normalize_logo(content, mime_type)
         digest = hashlib.sha256(content).hexdigest()
         extension = (

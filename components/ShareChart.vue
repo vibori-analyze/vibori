@@ -7,6 +7,11 @@ const props = defineProps<{
 }>()
 const selected = ref(props.initial ?? '')
 const { data: partyData } = await useAsyncData('parties', parties, { deep: false })
+const { data: candidateData } = await useAsyncData(
+  () => `candidates-${props.files[0]?.election.id || 'unknown'}`,
+  () => props.files[0] ? electionCandidates(props.files[0].election.id) : Promise.resolve([]),
+  { deep: false },
+)
 const candidates = computed<ElectionEntity[]>(() => {
   const entities = new Map<string, ElectionEntity>()
   for (const file of props.files) {
@@ -28,10 +33,10 @@ const selectedEntity = computed(() => candidates.value.find(candidate => candida
 const selectedParty = computed(() => {
   const entity = selectedEntity.value
   if (!entity) return undefined
-  return partyFor(
+  return partyForEntity(
     partyData.value || [],
-    entity.type === 'party' ? entity.id : entity.party_id,
-    entity.type === 'party' ? entity.name : entity.party_name,
+    candidateData.value || [],
+    entity,
   )
 })
 

@@ -3,12 +3,18 @@ import type { AggregatedRow } from '~/types/election'
 
 const props = defineProps<{ rows: AggregatedRow[], valid: number, electionId: string, unitId: string }>()
 const { data: partyData } = await useAsyncData('parties', parties, { deep: false })
-const logoFor = (result: AggregatedRow) => partyFor(
+const { data: candidateData } = await useAsyncData(
+  () => `candidates-${props.electionId}`,
+  () => electionCandidates(props.electionId),
+  { deep: false },
+)
+const logoFor = (result: AggregatedRow) => partyForEntity(
   partyData.value || [],
-  result.type === 'party' ? result.id : result.party_id,
-  result.type === 'party' ? result.name : result.party_name,
+  candidateData.value || [],
+  result,
 )
 const colorFor = (result: AggregatedRow) => logoFor(result)?.color
+const partyNameFor = (result: AggregatedRow) => partyNameForEntity(candidateData.value || [], result)
 const search = ref('')
 const page = ref(1)
 const pageSize = 25
@@ -41,7 +47,7 @@ watch([search, () => props.rows], () => { page.value = 1 })
                 <PartyLogo :party="logoFor(result)" />
                 <NuxtLink :to="{ path: '/entity/' + encodeURIComponent(result.id), query: { election: electionId, unit: unitId } }" class="entity">{{ result.name }}</NuxtLink>
               </span>
-              <small v-if="result.type === 'candidate' && result.party_name">{{ result.party_name }}</small>
+              <small v-if="result.type === 'candidate' && partyNameFor(result)">{{ partyNameFor(result) }}</small>
             </td>
             <td>{{ result.votes.toLocaleString('ru-RU') }}</td>
             <td><b>{{ pct(result.votes, valid).toFixed(2) }}%</b><i :style="{ width: pct(result.votes, valid) + '%', background: colorFor(result) }" /></td>

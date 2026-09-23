@@ -48,6 +48,36 @@ export function partyFor(
   return list.find(party => party.aliases?.some(alias => normalized.includes(alias.toLocaleUpperCase('ru').replaceAll('Ё', 'Е'))))
 }
 
+function normalizedEntityName(value: string): string {
+  return value.toLocaleUpperCase('ru').replaceAll('Ё', 'Е').replaceAll(/[^\p{L}\p{N}]+/gu, '')
+}
+
+/** Resolve old protocol rows whose candidate IDs predate imported candidate records. */
+export function partyForEntity(
+  list: PartyRecord[],
+  candidates: CandidateSummary[],
+  entity: ElectionEntity,
+): PartyRecord | undefined {
+  const direct = partyFor(
+    list,
+    entity.type === 'party' ? entity.id : entity.party_id,
+    entity.type === 'party' ? entity.name : entity.party_name,
+  )
+  if (direct || entity.type !== 'candidate') return direct
+  const byId = candidates.find(candidate => candidate.id === entity.id)
+  const sameName = candidates.filter(candidate => normalizedEntityName(candidate.name) === normalizedEntityName(entity.name))
+  const candidate = byId || (sameName.length === 1 ? sameName[0] : undefined)
+  return candidate ? partyFor(list, candidate.party_id, candidate.party_name) : undefined
+}
+
+export function partyNameForEntity(candidates: CandidateSummary[], entity: ElectionEntity): string | undefined {
+  if (entity.party_name) return entity.party_name
+  if (entity.type !== 'candidate') return undefined
+  const byId = candidates.find(candidate => candidate.id === entity.id)
+  const sameName = candidates.filter(candidate => normalizedEntityName(candidate.name) === normalizedEntityName(entity.name))
+  return (byId || (sameName.length === 1 ? sameName[0] : undefined))?.party_name
+}
+
 export async function electionCatalog(electionId: string): Promise<ElectionCatalogDetail> {
   return staticData<ElectionCatalogDetail>(`${electionId}/index.json`)
 }

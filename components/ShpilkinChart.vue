@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { AnalysisPoint, ElectionEntity, NationalChartAnalysis, RegionalChartAnalysis } from '~/types/election'
+import type { AnalysisPoint, CandidateSummary, ElectionEntity, NationalChartAnalysis, RegionalChartAnalysis } from '~/types/election'
 
-const props = defineProps<{ analysis: NationalChartAnalysis | RegionalChartAnalysis, entities: ElectionEntity[], unitId: string }>()
+const props = defineProps<{ analysis: NationalChartAnalysis | RegionalChartAnalysis, entities: ElectionEntity[], candidates?: CandidateSummary[], unitId: string }>()
 const palette = ['#356ae6', '#d6452e', '#1b9467', '#d78418', '#8b52c7', '#bf3f79', '#138a9b', '#766f2c']
 const canvas = ref<HTMLCanvasElement>(); const shareOverlay = ref<HTMLCanvasElement>(); const absoluteCanvas = ref<HTMLCanvasElement>(); const absoluteOverlay = ref<HTMLCanvasElement>(); const tooltip = ref('')
 const shareHover = ref<{ x: number, y: number } | null>(null); const absoluteHover = ref<{ x: number, y: number } | null>(null)
@@ -10,7 +10,7 @@ const legendSearch = ref('')
 const legendLimit = ref(60)
 const { data: partyData } = await useAsyncData('parties', parties, { deep: false })
 const entities = computed(() => props.entities.map((entity, index) => {
-  const party = partyFor(partyData.value || [], entity.type === 'party' ? entity.id : entity.party_id, entity.type === 'party' ? entity.name : entity.party_name)
+  const party = partyForEntity(partyData.value || [], props.candidates || [], entity)
   return { ...entity, index, party, color: party?.color || palette[index % palette.length] }
 }).filter(entity => availableEntities.value.has(entity.index)))
 const legendEntities = computed(() => entities.value.filter(entity => entity.name.toLocaleLowerCase('ru').includes(legendSearch.value.toLocaleLowerCase('ru'))))
