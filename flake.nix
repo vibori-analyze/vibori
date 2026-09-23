@@ -14,6 +14,14 @@
           exec python3 ${./scripts/import_izbirkom_api.py} --config ${./config/izbirkom.json} "$@"
         '';
       };
+      candidateImporter = pkgs.writeShellApplication {
+        name = "vibori-import-candidate-parties-2026";
+        runtimeInputs = [ (pkgs.python3.withPackages (pythonPackages: [ pythonPackages.pysocks ])) ];
+        text = ''
+          export PYTHONPATH=${./scripts}
+          exec python3 ${./scripts/import_candidate_parties_2026.py} "$@"
+        '';
+      };
       indexer = pkgs.writeShellApplication {
         name = "vibori-build-index";
         runtimeInputs = [ pkgs.nodejs_22 ];
@@ -56,6 +64,7 @@
       packages.${system}.default = generator;
       apps.${system} = {
         import-izbirkom = { type = "app"; program = "${importer}/bin/vibori-import-izbirkom"; };
+        import-candidate-parties-2026 = { type = "app"; program = "${candidateImporter}/bin/vibori-import-candidate-parties-2026"; };
         build-index = { type = "app"; program = "${indexer}/bin/vibori-build-index"; };
         check = { type = "app"; program = "${checker}/bin/vibori-check"; };
         generate = { type = "app"; program = "${generator}/bin/vibori-generate"; };

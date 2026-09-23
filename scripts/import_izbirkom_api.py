@@ -333,6 +333,12 @@ def candidate_record(
     protocol_num: int,
 ) -> JsonObject:
     party_name = summary.get("electionAssociation") or None
+    if (
+        isinstance(party_name, str)
+        and party_name.strip().casefold()
+        == "\u0441\u0430\u043c\u043e\u0432\u044b\u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0435"
+    ):
+        party_name = None
     candidate_id = summary["id"]
     profile = detail.get("body") or {}
     return {
@@ -346,9 +352,7 @@ def candidate_record(
         "name": summary["fullName"],
         "election_id": f"izbirkom-{election['id']}-p{protocol_num}",
         "party": (
-            {"id": party_id(party_name), "name": party_name}
-            if party_name and party_name != "Самовыдвижение"
-            else None
+            {"id": party_id(party_name), "name": party_name} if party_name else None
         ),
         "birth_date": profile.get("birthDate") or summary.get("birthDate"),
         "birth_place": profile.get("birthPlace"),

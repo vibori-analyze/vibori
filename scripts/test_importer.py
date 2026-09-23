@@ -81,6 +81,20 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(record["party"]["name"], "Example Party")
         self.assertIn("candidateId=candidate-id", record["source"]["url"])
 
+    def test_self_nomination_is_not_a_party(self) -> None:
+        record = candidate_record(
+            "https://example.org",
+            {"id": 42},
+            {
+                "id": "candidate-id",
+                "fullName": "Candidate Name",
+                "electionAssociation": " самовыдвижение ",
+            },
+            {"body": {}},
+            1,
+        )
+        self.assertIsNone(record["party"])
+
     def test_protocol_uses_official_candidate_id_and_party(self) -> None:
         candidate = {
             "id": "official-id",
