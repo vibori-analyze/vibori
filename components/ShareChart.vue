@@ -6,6 +6,7 @@ const props = defineProps<{
   initial?: string
 }>()
 const selected = ref(props.initial ?? '')
+const { data: partyData } = await useAsyncData('parties', parties, { deep: false })
 const candidates = computed<ElectionEntity[]>(() => {
   const entities = new Map<string, ElectionEntity>()
   for (const file of props.files) {
@@ -21,6 +22,17 @@ watchEffect(() => {
   if (!selected.value && firstCandidate) {
     selected.value = firstCandidate.id
   }
+})
+
+const selectedEntity = computed(() => candidates.value.find(candidate => candidate.id === selected.value))
+const selectedParty = computed(() => {
+  const entity = selectedEntity.value
+  if (!entity) return undefined
+  return partyFor(
+    partyData.value || [],
+    entity.type === 'party' ? entity.id : entity.party_id,
+    entity.type === 'party' ? entity.name : entity.party_name,
+  )
 })
 
 const points = computed(() => props.files.map((file, index) => {
@@ -42,23 +54,27 @@ const line = computed(() => points.value.map(point => `${point.x},${point.y}`).j
         <span class="eyebrow">ДИНАМИКА ПО УЧАСТКАМ</span>
         <h3>Доля голосов</h3>
       </div>
-      <select v-model="selected">
-        <option v-for="candidate in candidates" :key="candidate.id" :value="candidate.id">
-          {{ candidate.name }}
-        </option>
-      </select>
+      <span class="chart-choice">
+        <select v-model="selected" aria-label="Партия или кандидат для графика">
+          <option v-for="candidate in candidates" :key="candidate.id" :value="candidate.id">
+            {{ candidate.name }}
+          </option>
+        </select>
+        <PartyLogo :party="selectedParty" />
+      </span>
     </div>
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img">
       <line x1="0" y1="75" x2="100" y2="75" />
       <line x1="0" y1="50" x2="100" y2="50" />
       <line x1="0" y1="25" x2="100" y2="25" />
-      <polyline :points="line" />
+      <polyline :points="line" :style="{ stroke: selectedParty?.color }" />
       <circle
         v-for="point in points"
         :key="`${point.label}-${point.x}`"
         :cx="point.x"
         :cy="point.y"
         r="1.7"
+        :style="{ stroke: selectedParty?.color }"
       >
         <title>{{ point.label }}: {{ point.value.toFixed(2) }}%</title>
       </circle>

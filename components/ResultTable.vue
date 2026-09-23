@@ -8,6 +8,7 @@ const logoFor = (result: AggregatedRow) => partyFor(
   result.type === 'party' ? result.id : result.party_id,
   result.type === 'party' ? result.name : result.party_name,
 )
+const colorFor = (result: AggregatedRow) => logoFor(result)?.color
 const search = ref('')
 const page = ref(1)
 const pageSize = 25
@@ -43,7 +44,7 @@ watch([search, () => props.rows], () => { page.value = 1 })
               <small v-if="result.type === 'candidate' && result.party_name">{{ result.party_name }}</small>
             </td>
             <td>{{ result.votes.toLocaleString('ru-RU') }}</td>
-            <td><b>{{ pct(result.votes, valid).toFixed(2) }}%</b><i :style="{ width: pct(result.votes, valid) + '%' }" /></td>
+            <td><b>{{ pct(result.votes, valid).toFixed(2) }}%</b><i :style="{ width: pct(result.votes, valid) + '%', background: colorFor(result) }" /></td>
           </tr>
         </tbody>
       </table>
