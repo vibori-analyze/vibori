@@ -7,37 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-def perpendicular_distance(
-    point: list[float], start: list[float], end: list[float]
-) -> float:
-    dx, dy = end[0] - start[0], end[1] - start[1]
-    if dx == 0 and dy == 0:
-        return ((point[0] - start[0]) ** 2 + (point[1] - start[1]) ** 2) ** 0.5
-    return (
-        abs(dy * point[0] - dx * point[1] + end[0] * start[1] - end[1] * start[0])
-        / (dx * dx + dy * dy) ** 0.5
-    )
-
-
-def simplify(points: list[list[float]], tolerance: float) -> list[list[float]]:
-    if len(points) <= 4:
-        return points
-    open_points = points[:-1] if points[0] == points[-1] else points
-    first, last = open_points[0], open_points[-1]
-    distance, split = max(
-        (perpendicular_distance(point, first, last), index)
-        for index, point in enumerate(open_points[1:-1], 1)
-    )
-    if distance <= tolerance:
-        result = [first, last]
-    else:
-        result = simplify(open_points[: split + 1], tolerance)[:-1] + simplify(
-            open_points[split:], tolerance
-        )
-    return result + [result[0]]
-
-
-def normalize_geometry(geometry: dict[str, Any], tolerance: float) -> dict[str, Any]:
+def normalize_geometry(geometry: dict[str, Any]) -> dict[str, Any]:
     polygons = (
         [geometry["coordinates"]]
         if geometry["type"] == "Polygon"
@@ -46,9 +16,7 @@ def normalize_geometry(geometry: dict[str, Any], tolerance: float) -> dict[str, 
     normalized = []
     for polygon in polygons:
         rings = [
-            simplify(
-                [[round(value, 4) for value in point[:2]] for point in ring], tolerance
-            )
+            [[round(value, 4) for value in point[:2]] for point in ring]
             for ring in polygon
         ]
         normalized.append([ring for ring in rings if len(ring) >= 4])
@@ -63,7 +31,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
     parser.add_argument("target", type=Path)
-    parser.add_argument("--tolerance", type=float, default=0.08)
     args = parser.parse_args()
     source = json.loads(args.source.read_text())
     features = []
@@ -77,7 +44,7 @@ def main() -> None:
             {
                 "type": "Feature",
                 "properties": {"name": name},
-                "geometry": normalize_geometry(feature["geometry"], args.tolerance),
+                "geometry": normalize_geometry(feature["geometry"]),
             }
         )
     output = {

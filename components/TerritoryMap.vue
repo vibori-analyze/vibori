@@ -25,13 +25,20 @@ function rings(geometry: Geometry): number[][][] {
 }
 function projectedPath(feature: Feature, regional = false): string {
   const all = rings(feature.geometry)
-  const projected = all.map(ring => ring.map(point => [point[0] < 0 ? point[0] + 360 : point[0], point[1]]))
+  const project = (point: number[]) => {
+    const longitude = point[0] < 0 ? point[0] + 360 : point[0]
+    const latitude = Math.max(-85, Math.min(85, point[1])) * Math.PI / 180
+    return [longitude, Math.log(Math.tan(Math.PI / 4 + latitude / 2))]
+  }
+  const projected = all.map(ring => ring.map(project))
   const points = projected.flat()
   if (!points.length) return ''
   const minX = regional ? Math.min(...points.map(point => point[0])) : 18
   const maxX = regional ? Math.max(...points.map(point => point[0])) : 190
-  const minY = regional ? Math.min(...points.map(point => point[1])) : 40
-  const maxY = regional ? Math.max(...points.map(point => point[1])) : 82
+  const globalSouth = project([18, 40])[1]
+  const globalNorth = project([18, 82])[1]
+  const minY = regional ? Math.min(...points.map(point => point[1])) : globalSouth
+  const maxY = regional ? Math.max(...points.map(point => point[1])) : globalNorth
   const width = Math.max(1, maxX - minX); const height = Math.max(1, maxY - minY)
   const scale = Math.min(900 / width, 430 / height)
   const offsetX = (960 - width * scale) / 2; const offsetY = (480 - height * scale) / 2
@@ -49,11 +56,11 @@ const positions = computed<Position[]>(() => props.units.map((unit, index) => {
   <section v-if="data" class="territory-map" :aria-label="selectedRegion ? 'Карта округов региона' : 'Карта регионов России'">
     <svg v-if="!selectedRegion" viewBox="0 0 960 480" role="img" aria-labelledby="russia-map-title">
       <title id="russia-map-title">Выберите регион России</title>
-      <path v-for="item in regions" :key="item.unit!.id" :d="projectedPath(item.feature)" tabindex="0" role="button" :aria-label="item.unit!.name" @click="emit('select', item.unit!)" @keydown.enter="emit('select', item.unit!)" @keydown.space.prevent="emit('select', item.unit!)"><title>{{ item.unit!.name }}</title></path>
+      <path v-for="item in regions" :key="item.unit!.id" :d="projectedPath(item.feature)" fill-rule="evenodd" tabindex="0" role="button" :aria-label="item.unit!.name" @click="emit('select', item.unit!)" @keydown.enter="emit('select', item.unit!)" @keydown.space.prevent="emit('select', item.unit!)"><title>{{ item.unit!.name }}</title></path>
     </svg>
     <div v-else class="regional-map">
       <svg viewBox="0 0 960 480" role="img" :aria-label="`Округа: ${selectedRegion.name}`">
-        <path v-if="selectedFeature" class="region-outline" :d="projectedPath(selectedFeature, true)" />
+        <path v-if="selectedFeature" class="region-outline" :d="projectedPath(selectedFeature, true)" fill-rule="evenodd" />
         <g v-for="(unit, index) in units" :key="unit.id" class="district-marker" tabindex="0" role="button" :aria-label="unit.name" @click="emit('select', unit)" @keydown.enter="emit('select', unit)" @keydown.space.prevent="emit('select', unit)">
           <circle :cx="positions[index]?.x" :cy="positions[index]?.y" r="25" />
           <text :x="positions[index]?.x" :y="positions[index]?.y + 5">{{ districtNumber(unit, index) }}</text>
