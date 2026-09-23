@@ -216,7 +216,7 @@ footer { font-size: 18px; letter-spacing: -.04em; }
 .territory-map .region-outline { fill: none; stroke: #176b68; stroke-width: 3; }
 .district-marker circle { stroke: #fff; stroke-width: 3; }
 .district-marker:hover circle, .district-marker:focus circle { filter: brightness(.82); stroke: var(--ink); }
-.district-marker text { fill: var(--ink); stroke: white; stroke-width: 3; paint-order: stroke fill; }
+.district-marker text { fill: var(--ink); font-weight: 700; text-anchor: middle; }
 .map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 17px; padding: 17px 22px 10px; border-top: 1px solid var(--line); font-size: 12px; }
 .map-legend-label { width: 100%; font-weight: 750; color: var(--ink); }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }

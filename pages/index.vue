@@ -24,6 +24,7 @@ const matches = computed(() => {
   const terms = normalize(search.value).split(/\s+/).filter(Boolean)
   return searchable.value.filter(item => terms.every(term => item.text.includes(term))).map(item => item.unit)
 })
+const showTerritoryGrid = computed(() => !units.value.some(unit => 'kind' in unit && (unit.kind === 'region' || unit.kind === 'district')))
 const pages = computed(() => Math.ceil(matches.value.length / pageSize))
 const visible = computed(() => matches.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 watch(search, () => { page.value = 1 })
@@ -32,7 +33,6 @@ watch([election, () => route.query.path, retry], async ([selected, path], _, onC
   let cancelled = false
   onCleanup(() => { cancelled = true })
   units.value = []
-  trail.value = []
   search.value = ''
   page.value = 1
   loadError.value = false
@@ -46,6 +46,7 @@ watch([election, () => route.query.path, retry], async ([selected, path], _, onC
       const node = children.find(item => item.id === id)
       if (!node) throw new Error('Unknown commission')
       nextTrail.push(node)
+      if (!cancelled) trail.value = [...nextTrail]
       if (node.kind === 'territorial_commission') {
         const precincts: CatalogPrecinct[] = []
         for (let index = 0; index < Math.ceil(node.count / 500); index += 1) {
@@ -70,7 +71,8 @@ watch([election, () => route.query.path, retry], async ([selected, path], _, onC
 }, { immediate: true })
 
 function browse(depth: number, unit?: CatalogUnit): void {
-  const path = trail.value.slice(0, depth).map(item => item.id)
+  const currentPath = String(route.query.path || '').split('/').filter(Boolean)
+  const path = currentPath.slice(0, depth)
   if (unit) path.push(unit.id)
   void router.push({ query: { election: electionId.value, ...(path.length ? { path: path.join('/') } : {}) } })
 }
@@ -85,13 +87,6 @@ useHead({ title: 'Выборы — найти результаты своего 
 
 <template>
   <div class="home">
-    <section class="home-hero">
-      <div class="hero-content"><p class="eyebrow">ОТКРЫТЫЙ АРХИВ РЕЗУЛЬТАТОВ</p>
-      <h1>Результаты выборов.<br><span>До каждого участка.</span></h1>
-      <p>Исследуйте голосование на карте, найдите свою комиссию и откройте протокол с источником данных.</p>
-      <a class="primary-link" href="#catalog">Исследовать результаты <span aria-hidden="true">↗</span></a></div>
-      <div class="hero-panel" aria-hidden="true"><span>01 / 03</span><div class="hero-panel-art">◎<span>●</span>◎<span>●</span>◎</div><p>Выборы → территория → протокол</p></div>
-    </section>
     <section id="catalog" class="browser" aria-label="Каталог результатов">
       <div v-if="error" class="status" role="alert">Не удалось загрузить каталог. <button @click="refresh()">Повторить</button></div>
       <template v-else-if="data">
@@ -114,13 +109,13 @@ useHead({ title: 'Выборы — найти результаты своего 
           <TerritoryMap v-if="!loading && !loadError && (!current || current.kind === 'region') && mapUnits.length" :units="mapUnits" :selected-region="mapRegion" :election-id="electionId" @select="selectMapUnit" />
           <InlineResults v-if="!loading && selectedResultUnit" id="results" :key="`${electionId}-${selectedResultUnit}`" :election-id="electionId" :unit-id="selectedResultUnit" />
           <DistrictPrecinctMap v-if="!loading && current?.kind === 'district'" :election-id="electionId" :district="current" />
-          <label class="search-label" for="territory-search">{{ current?.kind === 'territorial_commission' ? '3. Найдите участок' : 'Найдите территорию в списке' }}</label>
-          <div class="search-field"><span aria-hidden="true">⌕</span><input id="territory-search" v-model="search" type="search" :placeholder="current?.kind === 'territorial_commission' ? 'Номер или название УИК' : 'Название территории или номер округа'" :disabled="loading" autocomplete="off"><kbd aria-hidden="true">{{ matches.length }}</kbd></div>
+          <label v-if="showTerritoryGrid" class="search-label" for="territory-search">{{ current?.kind === 'territorial_commission' ? '3. Найдите участок' : 'Найдите территорию в списке' }}</label>
+          <div v-if="showTerritoryGrid" class="search-field"><span aria-hidden="true">⌕</span><input id="territory-search" v-model="search" type="search" :placeholder="current?.kind === 'territorial_commission' ? 'Номер или название УИК' : 'Название территории или номер округа'" :disabled="loading" autocomplete="off"><kbd aria-hidden="true">{{ matches.length }}</kbd></div>
           <p v-if="loading" class="status" role="status">Загружаем комиссии…</p>
           <p v-else-if="loadError" class="status" role="alert">Не удалось загрузить комиссии. <button @click="retry++">Повторить</button><button @click="browse(0)">Все территории</button></p>
           <template v-else>
-            <p class="list-caption" aria-live="polite">{{ search ? 'Найдено' : 'В этом списке' }}: {{ count(matches.length) }} · Выберите территорию или откройте её результаты</p>
-            <div v-if="visible.length" class="territory-grid">
+            <p v-if="showTerritoryGrid" class="list-caption" aria-live="polite">{{ search ? 'Найдено' : 'В этом списке' }}: {{ count(matches.length) }} · Выберите территорию или откройте её результаты</p>
+            <div v-if="showTerritoryGrid && visible.length" class="territory-grid">
               <article v-for="unit in visible" :key="unit.id" class="territory-card">
                 <template v-if="'kind' in unit">
                   <button class="territory-name" @click="browse(trail.length, unit)"><span>{{ unit.name }}</span><span aria-hidden="true">→</span></button>
@@ -129,8 +124,8 @@ useHead({ title: 'Выборы — найти результаты своего 
                 <NuxtLink v-else class="precinct-link" :to="`/result/${encodeURIComponent(electionId)}/${encodeURIComponent(unit.id)}`"><span><strong>УИК №{{ unit.number || unit.name }}</strong><small>{{ unit.name }} · {{ unit.region }}</small></span><span aria-hidden="true">↗</span></NuxtLink>
               </article>
             </div>
-            <p v-else class="status">{{ search ? 'Ничего не найдено. Попробуйте другое название или номер.' : 'В архиве пока нет нижестоящих комиссий.' }}</p>
-            <nav v-if="pages > 1" class="pagination" aria-label="Страницы комиссий"><button :disabled="page === 1" @click="page--">← Назад</button><span aria-live="polite"> {{ page }} / {{ pages }} </span><button :disabled="page === pages" @click="page++">Далее →</button></nav>
+            <p v-else-if="showTerritoryGrid || !matches.length" class="status">{{ search ? 'Ничего не найдено. Попробуйте другое название или номер.' : 'В архиве пока нет нижестоящих комиссий.' }}</p>
+            <nav v-if="showTerritoryGrid && pages > 1" class="pagination" aria-label="Страницы комиссий"><button :disabled="page === 1" @click="page--">← Назад</button><span aria-live="polite"> {{ page }} / {{ pages }} </span><button :disabled="page === pages" @click="page++">Далее →</button></nav>
           </template>
         </template>
         <p v-else class="status">Голосование не найдено. Выберите голосование из списка.</p>

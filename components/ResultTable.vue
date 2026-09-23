@@ -14,7 +14,7 @@ const logoFor = (result: AggregatedRow) => partyForEntity(
   result,
 )
 const colorFor = (result: AggregatedRow) => logoFor(result)?.color
-const partyNameFor = (result: AggregatedRow) => partyNameForEntity(candidateData.value || [], result)
+const partyNameFor = (result: AggregatedRow) => partyNameForEntity(candidateData.value || [], result) || logoFor(result)?.name
 const partyForResult = (result: AggregatedRow) => logoFor(result)
 const partyIdFor = (result: AggregatedRow) => partyForResult(result)?.id
 const partyLinkFor = (result: AggregatedRow) => '/entity/' + encodeURIComponent(partyIdFor(result) || '')

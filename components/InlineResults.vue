@@ -10,6 +10,10 @@ const file = computed<ResultFile | undefined>(() => bundle.value?.official || bu
 const total = computed(() => file.value ? aggregate([file.value]) : undefined)
 const turnout = computed(() => total.value?.turnout.registered
   ? total.value.turnout.issued / total.value.turnout.registered * 100 : 0)
+const invalidPct = computed(() => {
+  const cast = (total.value?.turnout.valid || 0) + (total.value?.turnout.invalid || 0)
+  return cast ? (total.value!.turnout.invalid / cast * 100).toFixed(2) : '0.00'
+})
 const analysis = shallowRef<NationalChartAnalysis | RegionalChartAnalysis>()
 const analysisFailed = ref(false)
 const analysisLoading = ref(false)
@@ -40,7 +44,7 @@ watch(file, async (selected, _, onCleanup) => {
   <section v-if="total && file" class="inline-results" aria-label="Результаты территории">
     <section class="stats">
       <div><span>ЯВКА</span><b>{{ turnout.toFixed(2) }}%</b><small>{{ total.turnout.issued.toLocaleString('ru-RU') }} из {{ total.turnout.registered.toLocaleString('ru-RU') }}</small></div>
-      <div><span>ДЕЙСТВИТЕЛЬНЫЕ</span><b>{{ total.turnout.valid.toLocaleString('ru-RU') }}</b><small>недействительных: {{ total.turnout.invalid.toLocaleString('ru-RU') }}</small></div>
+      <div><span>ДЕЙСТВИТЕЛЬНЫЕ</span><b>{{ total.turnout.valid.toLocaleString('ru-RU') }}</b><small>недействительных: {{ total.turnout.invalid.toLocaleString('ru-RU') }} ({{ invalidPct }}%)</small></div>
       <div><span>ИСТОЧНИК ИТОГА</span><b>{{ bundle?.official ? 'ЦИК РФ' : 'РАСЧЁТ' }}</b><small>{{ bundle?.official ? 'официальный сводный протокол' : 'сумма доступных протоколов' }}</small></div>
     </section>
     <p v-if="file.source?.url" class="source-link"><a :href="file.source.url" target="_blank" rel="noopener noreferrer">Исходный протокол ↗</a> · Получен {{ file.source.retrieved_at?.slice(0, 10) }}</p>

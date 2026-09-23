@@ -21,6 +21,10 @@ const turnout = computed(() => (
     ? total.value.turnout.issued / total.value.turnout.registered * 100
     : 0
 ))
+const invalidPct = computed(() => {
+  const cast = total.value.turnout.valid + total.value.turnout.invalid
+  return cast ? (total.value.turnout.invalid / cast * 100).toFixed(2) : '0.00'
+})
 const isPrecinct = computed(() => unit.value?.kind === 'precinct')
 const upperUnit = computed(() => {
   const path = unit.value?.administrative_path || []
@@ -113,7 +117,7 @@ watch(unit, selected => {
         <span>ДЕЙСТВИТЕЛЬНЫЕ</span>
         <b>{{ total.turnout.valid.toLocaleString('ru-RU') }}</b>
         <small>
-          недействительных: {{ total.turnout.invalid.toLocaleString('ru-RU') }}
+          недействительных: {{ total.turnout.invalid.toLocaleString('ru-RU') }} ({{ invalidPct }}%)
         </small>
       </div>
       <div>
