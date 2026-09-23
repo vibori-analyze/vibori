@@ -8,6 +8,7 @@ import type {
   PartyRecord,
   ElectionCatalogDetail,
   ElectionCatalog,
+  ElectionEntity,
   ElectionUnit,
   NationalChartAnalysis,
   RegionalChartAnalysis,
