@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import type { AggregatedRow } from '~/types/election'
 
-const props = defineProps<{ rows: AggregatedRow[], valid: number }>()
+const props = defineProps<{ rows: AggregatedRow[], valid: number, electionId: string, unitId: string }>()
+const { data: partyData } = await useAsyncData('parties', parties, { deep: false })
+const logoFor = (result: AggregatedRow) => partyFor(
+  partyData.value || [],
+  result.type === 'party' ? result.id : result.party_id,
+  result.type === 'party' ? result.name : result.party_name,
+)
 const search = ref('')
 const page = ref(1)
 const pageSize = 25
@@ -30,8 +36,11 @@ watch([search, () => props.rows], () => { page.value = 1 })
         <tbody>
           <tr v-for="result in visible" :key="result.id">
             <td>
-              <NuxtLink :to="'/entity/' + encodeURIComponent(result.id)" class="entity">{{ result.name }}</NuxtLink>
-              <small v-if="result.type === 'candidate' && result.party_id">кандидат</small>
+              <span class="result-entity">
+                <PartyLogo :party="logoFor(result)" />
+                <NuxtLink :to="{ path: '/entity/' + encodeURIComponent(result.id), query: { election: electionId, unit: unitId } }" class="entity">{{ result.name }}</NuxtLink>
+              </span>
+              <small v-if="result.type === 'candidate' && result.party_name">{{ result.party_name }}</small>
             </td>
             <td>{{ result.votes.toLocaleString('ru-RU') }}</td>
             <td><b>{{ pct(result.votes, valid).toFixed(2) }}%</b><i :style="{ width: pct(result.votes, valid) + '%' }" /></td>

@@ -117,7 +117,7 @@ const election = computed(() => official.value?.election || files.value[0]?.elec
       </div>
     </section>
     <p v-if="(official || files[0])?.source?.url" class="source-link"><a :href="(official || files[0])?.source?.url" target="_blank" rel="noopener noreferrer">Исходный протокол ↗</a> · Получен {{ (official || files[0])?.source?.retrieved_at?.slice(0, 10) }}</p>
-    <ResultTable :rows="total.rows" :valid="total.turnout.valid" />
+    <ResultTable :rows="total.rows" :valid="total.turnout.valid" :election-id="electionId" :unit-id="unitId" />
     <section v-if="!isPrecinct" id="analysis" ref="chartSlot" class="chart-lazy-shell">
       <div v-if="chartError" class="chart-loading" role="alert">Не удалось загрузить графики. <button @click="chartRetry++">Повторить</button></div>
       <div v-else-if="!analysis || chartLoading" class="chart-loading"><span class="loading-spinner" />Загрузка графиков…</div>

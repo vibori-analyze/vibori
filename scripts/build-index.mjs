@@ -1,10 +1,14 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const sourceRoot = pathToFileURL(`${resolve(process.argv[2] || 'public/data')}/`)
 const root = process.argv[3] ? pathToFileURL(`${resolve(process.argv[3])}/`) : sourceRoot
 await mkdir(root, { recursive: true })
+if (root.href !== sourceRoot.href) {
+  try { await cp(new URL('parties.json', sourceRoot), new URL('parties.json', root)) } catch (error) { if (error.code !== 'ENOENT') throw error }
+  try { await cp(new URL('party-logos/', sourceRoot), new URL('party-logos/', root), { recursive: true }) } catch (error) { if (error.code !== 'ENOENT') throw error }
+}
 const collator = new Intl.Collator('ru', { numeric: true })
 const pageSize = 500
 const directoryEntries = await readdir(sourceRoot, { withFileTypes: true })
@@ -29,6 +33,17 @@ for (const id of electionIds) {
   if (!precinctNames.length) continue
 
   const first = await readResult(id, 'precincts', precinctNames[0])
+  const candidateNames = await jsonNames(id, 'candidates')
+  const candidates = []
+  for (let offset = 0; offset < candidateNames.length; offset += 32) {
+    const batch = await Promise.all(candidateNames.slice(offset, offset + 32).map(name => readResult(id, 'candidates', name)))
+    for (const candidate of batch) candidates.push({
+      id: candidate.id, name: candidate.name,
+      party_id: candidate.party?.id, party_name: candidate.party?.name,
+      district_number: candidate.district_number, regional_group: candidate.regional_group,
+      number_in_list: candidate.number_in_list, status: candidate.status,
+    })
+  }
   const grouped = new Map()
   const entities = new Map()
   const rawPoints = []
@@ -113,6 +128,7 @@ for (const id of electionIds) {
   const precinctPageRoot = new URL(`${id}/precinct-pages/`, root)
   const computedRoot = new URL(`${id}/computed/`, root)
   const treeRoot = new URL(`${id}/tree/`, root)
+  const candidateIndex = new URL(`${id}/candidates.json`, root)
   await rm(analysisRoot, { recursive: true, force: true })
   await rm(precinctPageRoot, { recursive: true, force: true })
   await rm(computedRoot, { recursive: true, force: true })
@@ -121,6 +137,8 @@ for (const id of electionIds) {
   await mkdir(precinctPageRoot, { recursive: true })
   await mkdir(computedRoot, { recursive: true })
   await mkdir(treeRoot, { recursive: true })
+  if (candidates.length) await writeFile(candidateIndex, `${JSON.stringify(candidates)}\n`)
+  else await rm(candidateIndex, { force: true })
   await writeFile(new URL('national.json', analysisRoot), `${JSON.stringify({
     standard: 'vibori-chart-analysis/v3', entities: entityList, points,
   })}\n`)
@@ -188,10 +206,11 @@ for (const id of electionIds) {
     tree_root: nationalId,
     official_results: officialResults, computed_results: computedResults,
     precinct_pages: Math.ceil(precincts.length / pageSize),
+    candidates_file: candidates.length ? 'candidates.json' : undefined,
   }
   await writeFile(new URL(`${id}/index.json`, root), `${JSON.stringify(election)}\n`)
   await rm(new URL(`${id}/analysis.json`, root), { force: true })
-  const { entities: ignoredEntities, official_results: ignoredOfficialResults, computed_results: ignoredComputedResults, precinct_pages: ignoredPages, tree_root: ignoredTreeRoot, ...catalogEntry } = election
+  const { entities: ignoredEntities, official_results: ignoredOfficialResults, computed_results: ignoredComputedResults, precinct_pages: ignoredPages, tree_root: ignoredTreeRoot, candidates_file: ignoredCandidates, ...catalogEntry } = election
   elections.push(catalogEntry)
   global.gc?.()
 }

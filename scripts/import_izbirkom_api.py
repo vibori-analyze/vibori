@@ -2,9 +2,11 @@
 
 import hashlib
 import json
+import mimetypes
 import os
 import re
 import socket
+import time
 from argparse import ArgumentParser
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,8 +14,9 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, TypeAlias
+from urllib.error import HTTPError
 from urllib.parse import urlencode, urlparse
-from urllib.request import OpenerDirector, ProxyHandler, build_opener
+from urllib.request import OpenerDirector, ProxyHandler, Request, build_opener
 
 from izbirkom_api import ApiError, IzbirkomApi
 
@@ -21,6 +24,7 @@ JsonObject: TypeAlias = dict[str, Any]
 TreeEntry: TypeAlias = tuple[JsonObject, list[JsonObject]]
 TreeStackEntry: TypeAlias = tuple[JsonObject, list[JsonObject], str | None]
 BatchEntry: TypeAlias = tuple[JsonObject, list[JsonObject], int, Path]
+PARTY_LOGOS: list[JsonObject] = []
 
 
 def emit(event: str, **data: object) -> None:
@@ -60,6 +64,122 @@ def make_opener(proxy: str | None) -> OpenerDirector:
 def entity_id(name: str) -> str:
     ascii_slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return (ascii_slug or "entity") + "-" + hashlib.sha1(name.encode()).hexdigest()[:10]
+
+
+def party_id(name: str) -> str:
+    normalized = name.upper().replace("Ё", "Е")
+    for party in PARTY_LOGOS:
+        if any(
+            str(pattern).replace("Ё", "Е") in normalized
+            for pattern in party["patterns"]
+        ):
+            return str(party["id"])
+    return entity_id(name)
+
+
+def mediawiki_logo(
+    opener: OpenerDirector, title: str, user_agent: str
+) -> tuple[bytes, str, str]:
+    def open_request(request: Request) -> Any:
+        for attempt in range(5):
+            try:
+                return opener.open(request, timeout=45)
+            except HTTPError as error:
+                if error.code != 429 or attempt == 4:
+                    raise
+                time.sleep(int(error.headers.get("Retry-After", "5")))
+        raise RuntimeError("MediaWiki request exhausted retries")
+
+    query = urlencode(
+        {
+            "action": "query",
+            "titles": title,
+            "prop": "imageinfo",
+            "iiprop": "url|mime",
+            "format": "json",
+            "origin": "*",
+        }
+    )
+    api_url = f"https://ru.wikipedia.org/w/api.php?{query}"
+    request = Request(
+        api_url, headers={"Accept": "application/json", "User-Agent": user_agent}
+    )
+    with open_request(request) as response:
+        payload = json.load(response)
+    page = next(iter(payload["query"]["pages"].values()))
+    image = page["imageinfo"][0]
+    image_url = image["url"]
+    request = Request(image_url, headers={"User-Agent": user_agent})
+    time.sleep(1)
+    with open_request(request) as response:
+        return (
+            response.read(),
+            image.get("mime") or response.headers.get_content_type(),
+            image.get("descriptionurl") or api_url,
+        )
+
+
+def normalize_logo(content: bytes, mime_type: str) -> bytes:
+    if mime_type != "image/svg+xml":
+        return content
+    return b"\n".join(line.rstrip(b" \t\r") for line in content.splitlines()) + b"\n"
+
+
+def import_party_logos(
+    opener: OpenerDirector,
+    output: Path,
+    user_agent: str,
+    dry_run: bool,
+) -> None:
+    party_file = output / "parties.json"
+    existing = (
+        json.loads(party_file.read_text(encoding="utf-8"))
+        if party_file.exists()
+        else []
+    )
+    records = {item["id"]: item for item in existing}
+    for party in PARTY_LOGOS:
+        current = records.get(party["id"])
+        if current and (output / current["logo"]).exists():
+            continue
+        content, mime_type, source_url = mediawiki_logo(
+            opener, party["mediawiki_file"], user_agent
+        )
+        content = normalize_logo(content, mime_type)
+        digest = hashlib.sha256(content).hexdigest()
+        extension = (
+            mimetypes.guess_extension(mime_type)
+            or Path(urlparse(source_url).path).suffix
+            or ".img"
+        )
+        relative = f"party-logos/{digest}{extension}"
+        records[party["id"]] = {
+            "id": party["id"],
+            "name": party["name"],
+            "aliases": party["patterns"],
+            "logo": relative,
+            "source": {
+                "url": source_url,
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                "publisher": "Wikimedia Commons",
+            },
+        }
+        if not dry_run:
+            target = output / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                target.write_bytes(content)
+    if not dry_run:
+        party_file.parent.mkdir(parents=True, exist_ok=True)
+        party_file.write_text(
+            json.dumps(
+                sorted(records.values(), key=lambda item: item["id"]),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
 
 def election_pages(
@@ -160,6 +280,204 @@ def vote_count(value: object) -> int:
     return int(text)
 
 
+def candidate_record(
+    api_base: str,
+    election: JsonObject,
+    summary: JsonObject,
+    detail: JsonObject,
+    protocol_num: int,
+) -> JsonObject:
+    party_name = summary.get("electionAssociation") or None
+    candidate_id = summary["id"]
+    profile = detail.get("body") or {}
+    return {
+        "standard": "vibori-candidate/v1",
+        "source": {
+            "url": f"{api_base.rstrip('/')}/reports/341?candidateId={candidate_id}",
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            "publisher": "Central Election Commission of Russia",
+        },
+        "id": candidate_id,
+        "name": summary["fullName"],
+        "election_id": f"izbirkom-{election['id']}-p{protocol_num}",
+        "party": (
+            {"id": party_id(party_name), "name": party_name}
+            if party_name and party_name != "Самовыдвижение"
+            else None
+        ),
+        "birth_date": profile.get("birthDate") or summary.get("birthDate"),
+        "birth_place": profile.get("birthPlace"),
+        "address": profile.get("regAddressPublic"),
+        "education": profile.get("education"),
+        "work": profile.get("work"),
+        "position": profile.get("position"),
+        "status": profile.get("status") or summary.get("enrollment"),
+        "convictions": profile.get("convictions"),
+        "foreign_agent": profile.get("foreignAgent"),
+        "candidate_vrn": profile.get("candidateVrn"),
+        "district_number": summary.get("districtNum") or None,
+        "regional_group": summary.get("regionalGroup"),
+        "number_in_list": summary.get("numberInList"),
+        "nomination": summary.get("nomination"),
+        "registration": summary.get("enrollment"),
+        "registration_date": summary.get("regDate"),
+    }
+
+
+def candidate_pages(api: IzbirkomApi, election: JsonObject) -> list[JsonObject]:
+    candidates: list[JsonObject] = []
+    page = 1
+    while True:
+        response = api.post(
+            "/candidate/paging",
+            {
+                "electionsId": election["externalId"],
+                "showSelfNominated": True,
+                "page": page,
+                "perPage": 500,
+            },
+        )
+        candidates.extend(response.get("content") or [])
+        if page >= response.get("totalPages", page):
+            return candidates
+        page += 1
+
+
+def import_candidates(
+    api: IzbirkomApi,
+    api_base: str,
+    election: JsonObject,
+    output: Path,
+    executor: ThreadPoolExecutor,
+    dry_run: bool,
+    totals: dict[str, int],
+) -> dict[int, dict[str, list[JsonObject]]]:
+    summaries = candidate_pages(api, election)
+    by_protocol: dict[int, dict[str, list[JsonObject]]] = {
+        protocol_num: {} for protocol_num in protocol_numbers(election)
+    }
+    pending = {
+        executor.submit(api.get, "/reports/341", {"candidateId": item["id"]}): item
+        for item in summaries
+        if not (
+            output
+            / f"izbirkom-{election['id']}-p{1 if item.get('districtNum') else (2 if 2 in by_protocol else 1)}"
+            / "candidates"
+            / f"{item['id']}.json"
+        ).exists()
+    }
+    for summary in summaries:
+        protocol_num = (
+            1 if summary.get("districtNum") else (2 if 2 in by_protocol else 1)
+        )
+        target = (
+            output
+            / f"izbirkom-{election['id']}-p{protocol_num}"
+            / "candidates"
+            / f"{summary['id']}.json"
+        )
+        if target.exists():
+            record = json.loads(target.read_text(encoding="utf-8"))
+            by_protocol[protocol_num].setdefault(summary["fullName"], []).append(record)
+    for future in as_completed(pending):
+        summary = pending[future]
+        try:
+            detail = future.result()
+            protocol_num = (
+                1 if summary.get("districtNum") else (2 if 2 in by_protocol else 1)
+            )
+            record = candidate_record(api_base, election, summary, detail, protocol_num)
+            by_protocol[protocol_num].setdefault(summary["fullName"], []).append(record)
+            if not dry_run:
+                target = (
+                    output
+                    / record["election_id"]
+                    / "candidates"
+                    / f"{record['id']}.json"
+                )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temporary = target.with_suffix(".json.tmp")
+                temporary.write_text(
+                    json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+                    + "\n",
+                    encoding="utf-8",
+                )
+                temporary.replace(target)
+            totals["candidates"] += 1
+        except (
+            ApiError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            totals["errors"] += 1
+            emit(
+                "candidate_error",
+                election=election["id"],
+                candidate=summary.get("id"),
+                error=str(error),
+            )
+    emit("candidates", election=election["id"], imported=len(summaries))
+    return by_protocol
+
+
+def enrich_existing_protocol(
+    target: Path, candidates: dict[str, list[JsonObject]]
+) -> bool:
+    record: JsonObject = json.loads(target.read_text(encoding="utf-8"))
+    path: list[JsonObject] = (record.get("unit") or {}).get("administrative_path") or []
+    district: JsonObject = next(
+        (item for item in reversed(path) if item.get("kind") == "district"), {}
+    )
+    district_number = str(district.get("number") or "").lstrip("0")
+    changed = False
+    for result in record.get("results") or []:
+        entity = result.get("entity") or {}
+        if entity.get("type") == "party" and isinstance(entity.get("name"), str):
+            replacement = {
+                "id": party_id(entity["name"]),
+                "name": entity["name"],
+                "type": "party",
+            }
+            if replacement != entity:
+                result["entity"] = replacement
+                changed = True
+            continue
+        if entity.get("type") != "candidate":
+            continue
+        name = entity.get("name")
+        if not isinstance(name, str):
+            continue
+        matches = candidates.get(name, [])
+        match = next(
+            (
+                item
+                for item in matches
+                if str(item.get("district_number") or "").lstrip("0") == district_number
+            ),
+            matches[0] if len(matches) == 1 else None,
+        )
+        if not match:
+            continue
+        replacement = {"id": match["id"], "name": entity["name"], "type": "candidate"}
+        if match.get("party"):
+            replacement["party_id"] = match["party"]["id"]
+            replacement["party_name"] = match["party"]["name"]
+        if replacement != entity:
+            result["entity"] = replacement
+            changed = True
+    if changed:
+        temporary = target.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(target)
+    return changed
+
+
 def report_to_record(
     api_base: str,
     election: JsonObject,
@@ -167,11 +485,12 @@ def report_to_record(
     path: list[JsonObject],
     protocol_num: int,
     report: JsonObject,
+    candidates: dict[str, list[JsonObject]] | None = None,
 ) -> JsonObject | None:
     body = report.get("body") or {}
     records = body.get("records") or []
     counters = {
-        str(row.get("infoPrintNum")): vote_count(row.get("value"))
+        str(row.get("infoNum") or row.get("infoPrintNum")): vote_count(row.get("value"))
         for row in records
         if row.get("category") == "records"
     }
@@ -198,6 +517,32 @@ def report_to_record(
     scope = {"1": "national", "2": "regional", "3": "municipal"}.get(
         str((election.get("electionLevel") or {}).get("externalId", "")), "other"
     )
+
+    def result_entity(row: JsonObject) -> JsonObject:
+        name = row["infoText"]
+        if entity_type == "party":
+            return {"id": party_id(name), "name": name, "type": entity_type}
+        matches = (candidates or {}).get(name, [])
+        district = next(
+            (item for item in reversed(path) if unit_kind(item) == "district"), {}
+        )
+        district_number = str(district.get("number") or "").lstrip("0")
+        match = next(
+            (
+                item
+                for item in matches
+                if str(item.get("district_number") or "").lstrip("0") == district_number
+            ),
+            matches[0] if len(matches) == 1 else None,
+        )
+        if not match:
+            return {"id": entity_id(name), "name": name, "type": entity_type}
+        entity = {"id": match["id"], "name": name, "type": entity_type}
+        if match.get("party"):
+            entity["party_id"] = match["party"]["id"]
+            entity["party_name"] = match["party"]["name"]
+        return entity
+
     return {
         "standard": "vibori-election-result/v1",
         "source": {
@@ -235,9 +580,7 @@ def report_to_record(
         "results": [
             {
                 "entity": {
-                    "id": entity_id(row["infoText"]),
-                    "name": row["infoText"],
-                    "type": entity_type,
+                    **result_entity(row),
                 },
                 "votes": vote_count(row.get("value")),
             }
@@ -264,6 +607,7 @@ def import_batch(
     executor: ThreadPoolExecutor,
     dry_run: bool,
     totals: dict[str, int],
+    candidates: dict[int, dict[str, list[JsonObject]]],
 ) -> None:
     pending = {
         executor.submit(
@@ -281,7 +625,13 @@ def import_batch(
         try:
             report = future.result()
             record = report_to_record(
-                api_base, election, unit, path, protocol_num, report
+                api_base,
+                election,
+                unit,
+                path,
+                protocol_num,
+                report,
+                candidates.get(protocol_num),
             )
             if not record:
                 totals["skipped"] += 1
@@ -355,6 +705,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    PARTY_LOGOS.extend(config.get("party_logos") or [])
     proxy = (
         None
         if args.no_proxy
@@ -370,12 +721,15 @@ def main() -> None:
         user_agent,
         config["request"]["timeout_seconds"],
         config["request"]["retries"],
+        config["request"].get("delay_seconds", 0),
     )
     output = Path(args.out)
+    import_party_logos(api.opener, output, user_agent, args.dry_run)
     totals = {
         "elections": 0,
         "precincts": 0,
         "protocols": 0,
+        "candidates": 0,
         "official_aggregates": 0,
         "unavailable": 0,
         "skipped": 0,
@@ -420,6 +774,23 @@ def main() -> None:
             continue
         totals["precincts"] += precinct_count
         with ThreadPoolExecutor(max_workers=max(args.workers, 1)) as executor:
+            try:
+                candidates = import_candidates(
+                    api, api_base, election, output, executor, args.dry_run, totals
+                )
+            except (
+                ApiError,
+                KeyError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as error:
+                totals["errors"] += 1
+                candidates = {number: {} for number in protocol_numbers(election)}
+                emit(
+                    "candidate_import_error", election=election["id"], error=str(error)
+                )
             batch: list[BatchEntry] = []
             batch_size = max(args.workers, 1) * 4
             for unit, path in units.values():
@@ -434,6 +805,8 @@ def main() -> None:
                         / f"{unit['externalId']}.json"
                     )
                     if target.exists():
+                        if not args.dry_run and protocol_num in candidates:
+                            enrich_existing_protocol(target, candidates[protocol_num])
                         totals["skipped"] += 1
                         continue
                     batch.append((unit, path, protocol_num, target))
@@ -446,11 +819,19 @@ def main() -> None:
                             executor,
                             args.dry_run,
                             totals,
+                            candidates,
                         )
                         batch = []
             if batch:
                 import_batch(
-                    api, api_base, election, batch, executor, args.dry_run, totals
+                    api,
+                    api_base,
+                    election,
+                    batch,
+                    executor,
+                    args.dry_run,
+                    totals,
+                    candidates,
                 )
     emit("complete", **totals, next="nix run .#build-index")
 

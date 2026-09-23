@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibori.example/schema/candidate-1.json",
+  "title": "Vibori Candidate v1",
+  "type": "object",
+  "required": ["standard", "source", "id", "name", "election_id"],
+  "properties": {
+    "standard": { "const": "vibori-candidate/v1" },
+    "source": { "type": "object", "required": ["url", "retrieved_at"], "properties": { "url": { "format": "uri" }, "retrieved_at": { "format": "date-time" }, "publisher": { "type": "string" } } },
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "election_id": { "type": "string" },
+    "party": { "type": ["object", "null"], "properties": { "id": { "type": "string" }, "name": { "type": "string" } } },
+    "birth_date": { "type": ["string", "null"], "format": "date" },
+    "birth_place": { "type": ["string", "null"] },
+    "address": { "type": ["string", "null"] },
+    "education": { "type": ["string", "null"] },
+    "work": { "type": ["string", "null"] },
+    "position": { "type": ["string", "null"] },
+    "status": { "type": ["string", "null"] },
+    "convictions": { "type": ["array", "string", "null"] },
+    "foreign_agent": { "type": ["object", "string", "null"] },
+    "candidate_vrn": { "type": ["string", "null"] },
+    "district_number": { "type": ["integer", "string", "null"] },
+    "regional_group": { "type": ["string", "null"] },
+    "number_in_list": { "type": ["integer", "null"] },
+    "nomination": { "type": ["string", "null"] },
+    "registration": { "type": ["string", "null"] },
+    "registration_date": { "type": ["string", "null"], "format": "date" }
+  }
+}

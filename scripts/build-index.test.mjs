@@ -12,8 +12,10 @@ test('indexes all precinct pages, preserves source files and prefers official to
     const output = join(directory, 'output')
     const precincts = join(source, 'sample', 'precincts')
     const aggregates = join(source, 'sample', 'aggregates')
+    const candidates = join(source, 'sample', 'candidates')
     await mkdir(precincts, { recursive: true })
     await mkdir(aggregates, { recursive: true })
+    await mkdir(candidates, { recursive: true })
     const path = [
       { id: 'country', name: 'Country', kind: 'national' },
       { id: 'region', name: 'Region', kind: 'region' },
@@ -32,12 +34,15 @@ test('indexes all precinct pages, preserves source files and prefers official to
     }
     const official = JSON.stringify({ ...record, unit: path[0] })
     await writeFile(join(aggregates, 'country.json'), official)
+    await writeFile(join(candidates, 'candidate.json'), JSON.stringify({ id: 'candidate', name: 'Candidate', party: { id: 'party', name: 'Party' }, district_number: 1, status: 'registered' }))
     execFileSync(process.execPath, ['scripts/build-index.mjs', source, output])
     const json = async file => JSON.parse(await readFile(join(output, 'sample', file), 'utf8'))
     const catalog = await json('index.json')
     assert.equal(catalog.precinct_count, 501)
     assert.equal(catalog.official_results.country, 'aggregates/country.json')
     assert.equal(catalog.computed_results.country, undefined)
+    assert.equal(catalog.candidates_file, 'candidates.json')
+    assert.deepEqual(await json('candidates.json'), [{ id: 'candidate', name: 'Candidate', party_id: 'party', party_name: 'Party', district_number: 1, status: 'registered' }])
     assert.equal((await json('tree/tik-0.json')).length, 500)
     assert.equal((await json('tree/tik-1.json')).length, 1)
     const computed = await json('computed/tik.json')

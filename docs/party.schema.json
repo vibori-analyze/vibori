@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibori.example/schema/party-1.json",
+  "title": "Vibori Party v1",
+  "type": "object",
+  "required": ["id", "name", "logo", "source"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "logo": { "type": "string" },
+    "source": { "type": "object", "required": ["url", "retrieved_at"], "properties": { "url": { "format": "uri" }, "retrieved_at": { "format": "date-time" }, "publisher": { "type": "string" } } }
+  }
+}

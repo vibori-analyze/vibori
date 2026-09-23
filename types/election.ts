@@ -14,6 +14,7 @@ export interface ElectionEntity {
   name: string
   type: EntityType
   party_id?: string
+  party_name?: string
 }
 
 export interface ElectionResultRow {
@@ -108,6 +109,45 @@ export interface ElectionCatalogDetail extends CatalogElection {
   computed_results: Record<string, string>
   tree_root: string
   precinct_pages: number
+  candidates_file?: string
+}
+
+export interface CandidateSummary {
+  id: string
+  name: string
+  party_id?: string
+  party_name?: string
+  district_number?: number | string
+  regional_group?: string
+  number_in_list?: number
+  status?: string
+}
+
+export interface CandidateRecord extends CandidateSummary {
+  standard: 'vibori-candidate/v1'
+  election_id: string
+  source: { url: string, retrieved_at: string, publisher?: string }
+  party?: { id: string, name: string } | null
+  birth_date?: string
+  birth_place?: string
+  address?: string
+  education?: string
+  work?: string
+  position?: string
+  convictions?: unknown[] | string | null
+  foreign_agent?: unknown
+  candidate_vrn?: string
+  nomination?: string
+  registration?: string
+  registration_date?: string
+}
+
+export interface PartyRecord {
+  id: string
+  name: string
+  logo: string
+  aliases?: string[]
+  source: { url: string, retrieved_at: string, publisher?: string }
 }
 
 export type AnalysisPoint = [turnout: number, valid: number, results: number[]]

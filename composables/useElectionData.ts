@@ -3,6 +3,9 @@ import type {
   AggregatedRow,
   CatalogPrecinct,
   CatalogUnit,
+  CandidateRecord,
+  CandidateSummary,
+  PartyRecord,
   ElectionCatalogDetail,
   ElectionCatalog,
   ElectionUnit,
@@ -29,6 +32,21 @@ export async function catalog(): Promise<ElectionCatalog> {
   return staticData<ElectionCatalog>('index.json')
 }
 
+export async function parties(): Promise<PartyRecord[]> {
+  return staticData<PartyRecord[]>('parties.json').catch(() => [])
+}
+
+export function partyFor(
+  list: PartyRecord[],
+  id?: string,
+  name?: string,
+): PartyRecord | undefined {
+  const byId = list.find(party => party.id === id)
+  if (byId || !name) return byId
+  const normalized = name.toLocaleUpperCase('ru').replaceAll('Ё', 'Е')
+  return list.find(party => party.aliases?.some(alias => normalized.includes(alias.toLocaleUpperCase('ru').replaceAll('Ё', 'Е'))))
+}
+
 export async function electionCatalog(electionId: string): Promise<ElectionCatalogDetail> {
   return staticData<ElectionCatalogDetail>(`${electionId}/index.json`)
 }
@@ -39,6 +57,16 @@ export async function precinctPage(electionId: string, page: number): Promise<Ca
 
 export async function treeBranch(electionId: string, unitId: string): Promise<CatalogUnit[]> {
   return staticData<CatalogUnit[]>(`${electionId}/tree/${unitId}.json`)
+}
+
+export async function electionCandidates(electionId: string): Promise<CandidateSummary[]> {
+  const election = await electionCatalog(electionId)
+  if (!election.candidates_file) return []
+  return staticData<CandidateSummary[]>(`${electionId}/${election.candidates_file}`)
+}
+
+export async function candidateDetails(electionId: string, candidateId: string): Promise<CandidateRecord> {
+  return staticData<CandidateRecord>(`${electionId}/candidates/${encodeURIComponent(candidateId)}.json`)
 }
 
 export async function tikPrecinctPage(electionId: string, tikId: string, page: number): Promise<CatalogPrecinct[]> {
