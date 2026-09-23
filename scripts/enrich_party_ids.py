@@ -1,7 +1,7 @@
 """Apply configured stable party identifiers to existing canonical data files."""
 
-import json
 import hashlib
+import json
 import mimetypes
 from argparse import ArgumentParser
 from pathlib import Path
