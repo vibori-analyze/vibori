@@ -26,7 +26,7 @@ function winnerLegend(metrics: Record<string, MapMetric>): LegendItem[] {
   const values = new Map<string, LegendItem>()
   for (const metric of Object.values(metrics)) {
     if (!metric.winner) continue
-    const name = metric.party?.name || (metric.winner.type === 'candidate' ? 'Без партийного цвета' : metric.winner.name)
+    const name = metric.party?.name || (metric.winner.type === 'candidate' ? 'Самовыдвижение' : metric.winner.name)
     values.set(name, { name, color: metric.party?.color || '#798398' })
   }
   return [...values.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
@@ -52,6 +52,8 @@ const layers: Layer[] = [
 ]
 const props = defineProps<{ units: CatalogUnit[], selectedRegion?: CatalogUnit, electionId: string }>()
 const emit = defineEmits<{ select: [unit: CatalogUnit] }>()
+const mapSection = ref<HTMLElement>()
+const hoveredRegionId = ref<string | null>(null)
 const layerId = ref('winner')
 const layer = computed(() => layers.find(item => item.id === layerId.value) || layers[0]!)
 const ballotKind = ref('')
@@ -78,21 +80,14 @@ watch([() => props.electionId, unitIds, partyData, candidates], async (_, __, on
         const bundle = await resultBundleFor(props.electionId, unit.id, detail)
         const file = bundle.official || bundle.files[0]
         if (!file) return null
-        const groups = new Map<string, { votes: number, entity: ElectionEntity, party: PartyRecord | null }>()
-        for (const row of file.results) {
-          const rowParty = partyForEntity(partyData.value || [], candidates.value || [], row.entity) || null
-          const groupByParty = file.ballot.kind === 'single_member' && unit.kind === 'region' && rowParty
-          const key = groupByParty ? rowParty.id : row.entity.id
-          const entity = groupByParty ? { id: rowParty.id, name: rowParty.name, type: 'party' as const } : row.entity
-          const group = groups.get(key) || { votes: 0, entity, party: rowParty }
-          group.votes += row.votes
-          groups.set(key, group)
-        }
-        const leading = [...groups.values()].sort((a, b) => b.votes - a.votes)[0]
+        const rows = file.ballot.kind === 'single_member' && unit.kind === 'region'
+          ? partyRows(aggregate([file]), candidates.value || [], partyData.value || [])
+          : file.results.map(row => ({ ...row.entity, votes: row.votes }))
+        const leading = [...rows].sort((a, b) => b.votes - a.votes)[0]
         return { id: unit.id, metric: {
           turnout: file.turnout.registered ? file.turnout.issued / file.turnout.registered * 100 : null,
-          winner: leading?.entity || null,
-          party: leading?.party || null,
+          winner: leading || null,
+          party: leading ? partyForEntity(partyData.value || [], candidates.value || [], leading) || null : null,
           official: Boolean(bundle.official),
         } }
       }))
@@ -111,6 +106,11 @@ function mapDescription(unit: CatalogUnit): string {
   return `${unit.name}${count} · ${layer.value.value(metric)}`
 }
 const { data } = await useAsyncData('territory-map', () => $fetch<FeatureCollection>(`${useRuntimeConfig().app.baseURL.replace(/\/$/, '')}/data/maps/russia-regions.geojson`))
+watch([() => props.selectedRegion?.id, data], async ([id, features]) => {
+  if (!id || !features || !import.meta.client) return
+  await nextTick()
+  mapSection.value?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}, { immediate: true })
 const normalize = (value: string) => value.toLocaleLowerCase('ru').replaceAll('ё', 'е').replace(/\s*\([^)]*\)/g, '').replace(/\s+-\s+кузбасс$/, '').replace(/^(город федерального значения|город|республика)\s+/, '').replace(/\s+(область|край|республика|автономная область|автономный округ)$/g, '').trim()
 const unitByName = computed(() => new Map(props.units.map(unit => [normalize(unit.name), unit])))
 const selectedFeature = computed(() => data.value?.features.find(feature => normalize(feature.properties.name) === normalize(props.selectedRegion?.name || '')))
@@ -146,6 +146,7 @@ function projectedPath(feature: Feature, regional = false): string {
 }
 const isDatelineRegion = (feature: Feature) => normalize(feature.properties.name) === 'чукотский'
 const regions = computed(() => (data.value?.features || []).map(feature => ({ feature, unit: unitByName.value.get(normalize(feature.properties.name)) })).filter(item => item.unit))
+const hoveredRegion = computed(() => regions.value.find(item => item.unit?.id === hoveredRegionId.value))
 const positions = computed<Position[]>(() => props.units.map((unit, index) => {
   const columns = Math.ceil(Math.sqrt(props.units.length * 1.7))
   const rows = Math.ceil(props.units.length / columns)
@@ -154,7 +155,7 @@ const positions = computed<Position[]>(() => props.units.map((unit, index) => {
 </script>
 
 <template>
-  <section v-if="data" class="territory-map" :aria-label="selectedRegion ? 'Карта округов региона' : 'Карта регионов России'">
+  <section v-if="data" ref="mapSection" class="territory-map" :aria-label="selectedRegion ? 'Карта округов региона' : 'Карта регионов России'">
     <div class="map-toolbar">
       <div><p class="eyebrow">ИНТЕРАКТИВНАЯ КАРТА</p><h4>{{ selectedRegion ? 'Округа региона' : 'Регионы России' }}</h4><p>Выберите территорию на карте, чтобы перейти к комиссиям.</p></div>
       <label class="map-layer-control" for="map-layer">Окраска карты<select id="map-layer" v-model="layerId"><option v-for="item in layers" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
@@ -162,7 +163,8 @@ const positions = computed<Position[]>(() => props.units.map((unit, index) => {
     <p v-if="metricsLoading" class="map-loading" role="status">Загружаем показатели карты…</p>
     <svg v-if="!selectedRegion" viewBox="0 0 960 480" role="img" aria-labelledby="russia-map-title">
       <title id="russia-map-title">Выберите регион России</title>
-      <path v-for="item in regions" :key="item.unit!.id" :d="projectedPath(item.feature)" :style="{ fill: mapColor(item.unit!) }" :class="{ 'dateline-region': isDatelineRegion(item.feature) }" fill-rule="evenodd" tabindex="0" role="button" :aria-label="mapDescription(item.unit!)" @click="emit('select', item.unit!)" @keydown.enter="emit('select', item.unit!)" @keydown.space.prevent="emit('select', item.unit!)"><title>{{ mapDescription(item.unit!) }}</title></path>
+      <path v-for="item in regions" :key="item.unit!.id" :d="projectedPath(item.feature)" :style="{ fill: mapColor(item.unit!) }" :class="{ 'dateline-region': isDatelineRegion(item.feature) }" fill-rule="evenodd" tabindex="0" role="button" :aria-label="mapDescription(item.unit!)" @mouseenter="hoveredRegionId = item.unit!.id" @mouseleave="hoveredRegionId = null" @focus="hoveredRegionId = item.unit!.id" @blur="hoveredRegionId = null" @click="emit('select', item.unit!)" @keydown.enter="emit('select', item.unit!)" @keydown.space.prevent="emit('select', item.unit!)"><title>{{ mapDescription(item.unit!) }}</title></path>
+      <path v-if="hoveredRegion?.unit" class="region-hover-overlay" :class="{ 'dateline-region': isDatelineRegion(hoveredRegion.feature) }" :d="projectedPath(hoveredRegion.feature)" fill-rule="evenodd" pointer-events="none" />
     </svg>
     <div v-else class="regional-map">
       <svg viewBox="0 0 960 480" role="img" :aria-label="`Округа: ${selectedRegion.name}`">

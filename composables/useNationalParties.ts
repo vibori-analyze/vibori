@@ -1,6 +1,6 @@
-import type { AggregateResult, AggregatedRow, CandidateSummary, ElectionEntity, NationalChartAnalysis, PartyRecord } from '~/types/election'
+import type { AggregateResult, AggregatedRow, CandidateSummary, ElectionEntity, NationalChartAnalysis, PartyRecord, RegionalChartAnalysis } from '~/types/election'
 
-const unalignedId = 'national-unaffiliated'
+const unalignedId = 'self-nomination'
 
 function partyEntity(entity: ElectionEntity, candidates: CandidateSummary[], parties: PartyRecord[]): ElectionEntity {
   if (entity.type !== 'candidate') return entity
@@ -9,7 +9,7 @@ function partyEntity(entity: ElectionEntity, candidates: CandidateSummary[], par
   const partyId = entity.party_id || candidates.find(item => item.id === entity.id)?.party_id
   const partyName = partyNameForEntity(candidates, entity)
   if (partyId || partyName) return { id: partyId || `national-party-${partyName}`, name: partyName || 'Партия без названия', type: 'party' }
-  return { id: unalignedId, name: 'Без партии', type: 'other' }
+  return { id: unalignedId, name: 'Самовыдвижение', type: 'other' }
 }
 
 export function nationalPartyRows(total: AggregateResult, candidates: CandidateSummary[], parties: PartyRecord[]): AggregatedRow[] {
@@ -22,6 +22,8 @@ export function nationalPartyRows(total: AggregateResult, candidates: CandidateS
   }
   return [...grouped.values()]
 }
+
+export const partyRows = nationalPartyRows
 
 export function nationalPartyAnalysis(analysis: NationalChartAnalysis, candidates: CandidateSummary[], parties: PartyRecord[]): NationalChartAnalysis {
   if (!analysis.points) return analysis
@@ -48,5 +50,31 @@ export function nationalPartyAnalysis(analysis: NationalChartAnalysis, candidate
       }
       return [turnout, valid, [...votes].flatMap(([index, count]) => [index, count])]
     }),
+  }
+}
+
+export function regionalPartyAnalysis(analysis: RegionalChartAnalysis, entities: ElectionEntity[], candidates: CandidateSummary[], parties: PartyRecord[]): { analysis: RegionalChartAnalysis, entities: ElectionEntity[] } {
+  const groupedEntities: ElectionEntity[] = []
+  const indexes = new Map<string, number>()
+  const sourceIndexes = entities.map(entity => {
+    const grouped = partyEntity(entity, candidates, parties)
+    let index = indexes.get(grouped.id)
+    if (index === undefined) {
+      index = groupedEntities.length
+      groupedEntities.push(grouped)
+      indexes.set(grouped.id, index)
+    }
+    return index
+  })
+  return {
+    entities: groupedEntities,
+    analysis: { ...analysis, points: analysis.points.map(([turnout, valid, results]) => {
+      const votes = new Map<number, number>()
+      for (let offset = 0; offset < results.length; offset += 2) {
+        const target = sourceIndexes[results[offset]!]
+        if (target !== undefined) votes.set(target, (votes.get(target) || 0) + results[offset + 1]!)
+      }
+      return [turnout, valid, [...votes].flatMap(([index, count]) => [index, count])]
+    }) },
   }
 }

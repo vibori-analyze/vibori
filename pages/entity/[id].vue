@@ -17,18 +17,22 @@ const selectedElection = ref('')
 const loading = ref(true)
 const failed = ref(false)
 
-watch([id, requestedElection], async ([entityId, electionId], _, onCleanup) => {
+watch([id, requestedElection, catalogData], async ([entityId, electionId, catalogValue], _, onCleanup) => {
   candidate.value = undefined
-  if (!electionId) return
+  if (!catalogValue) return
   let cancelled = false
   onCleanup(() => { cancelled = true })
-  try {
-    const value = await candidateDetails(electionId, entityId)
-    if (!cancelled) candidate.value = value
-  } catch { /* Parties and legacy candidates do not have a detail file. */ }
+  const electionIds = electionId ? [electionId] : catalogValue.elections.map(item => item.id)
+  for (const selectedId of electionIds) {
+    try {
+      const value = await candidateDetails(selectedId, entityId)
+      if (!cancelled) candidate.value = value
+      break
+    } catch { /* This election has no detail file for the entity. */ }
+  }
 }, { immediate: true })
 
-watch([id, catalogData], async ([entityId, catalogValue], _, onCleanup) => {
+watch([id, catalogData, partyData], async ([entityId, catalogValue, partiesValue], _, onCleanup) => {
   let cancelled = false
   onCleanup(() => { cancelled = true })
   rows.value = []
@@ -41,7 +45,10 @@ watch([id, catalogData], async ([entityId, catalogValue], _, onCleanup) => {
     const batch = await Promise.allSettled(catalogValue.elections.slice(offset, offset + 4).map(async election => {
       const { official, files } = await resultBundleFor(election.id, election.national_id)
       const total = aggregate(official ? [official] : files)
-      return { election, total, result: total.rows.find(row => row.id === entityId) }
+      const ballot = (official || files[0])?.ballot.kind
+      const candidates = ballot === 'single_member' ? await electionCandidates(election.id) : []
+      const results = ballot === 'single_member' ? partyRows(total, candidates, partiesValue || []) : total.rows
+      return { election, total, result: total.rows.find(row => row.id === entityId) || results.find(row => row.id === entityId) }
     }))
     if (cancelled) return
     for (const response of batch) {
@@ -59,7 +66,7 @@ watch([id, catalogData], async ([entityId, catalogValue], _, onCleanup) => {
 
 watch([selectedElection, id, entity], async ([electionId, entityId, resultEntity], _, onCleanup) => {
   partyCandidates.value = []
-  if (!electionId || resultEntity?.type !== 'party') return
+  if (!electionId || (resultEntity?.type !== 'party' && !(partyData.value || []).some(item => item.id === entityId))) return
   let cancelled = false
   onCleanup(() => { cancelled = true })
   try {
@@ -69,8 +76,8 @@ watch([selectedElection, id, entity], async ([electionId, entityId, resultEntity
 }, { immediate: true })
 
 watch(requestedElection, value => { if (value) selectedElection.value = value }, { immediate: true })
-const displayedName = computed(() => candidate.value?.name || entity.value?.name)
-const isParty = computed(() => entity.value?.type === 'party')
+const displayedName = computed(() => candidate.value?.name || entity.value?.name || partyData.value?.find(item => item.id === id.value)?.name)
+const isParty = computed(() => entity.value?.type === 'party' || Boolean(partyData.value?.some(item => item.id === id.value)))
 const displayedParty = computed(() => {
   const partyId = isParty.value ? id.value : candidate.value?.party?.id
   const partyName = isParty.value ? entity.value?.name : candidate.value?.party?.name

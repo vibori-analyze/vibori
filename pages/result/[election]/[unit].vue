@@ -13,11 +13,18 @@ const picked = computed(() => files.value.filter(file => (
   || file.unit.administrative_path?.some(unit => unit.id === unitId.value)
 )))
 const total = computed(() => aggregate(official.value ? [official.value] : picked.value))
-const isNationalCandidate = computed(() => unit.value?.kind === 'national' && (official.value || files.value[0])?.ballot.kind === 'single_member')
+const isPartySummary = computed(() => ['national', 'region'].includes(unit.value?.kind || '') && (official.value || files.value[0])?.ballot.kind === 'single_member')
 const { data: partyData } = await useAsyncData('parties', parties, { deep: false })
-const displayRows = computed(() => isNationalCandidate.value ? nationalPartyRows(total.value, candidateData.value || [], partyData.value || []) : total.value.rows)
-const displayAnalysis = computed(() => analysis.value && isNationalCandidate.value && 'entities' in analysis.value
-  ? nationalPartyAnalysis(analysis.value, candidateData.value || [], partyData.value || []) : analysis.value)
+const displayRows = computed(() => isPartySummary.value ? partyRows(total.value, candidateData.value || [], partyData.value || []) : total.value.rows)
+const displayChart = computed(() => {
+  if (!analysis.value || !electionDetail.value) return undefined
+  if (!isPartySummary.value) return { analysis: analysis.value, entities: 'entities' in analysis.value ? analysis.value.entities : electionDetail.value.entities }
+  if ('entities' in analysis.value) {
+    const grouped = nationalPartyAnalysis(analysis.value, candidateData.value || [], partyData.value || [])
+    return { analysis: grouped, entities: grouped.entities }
+  }
+  return regionalPartyAnalysis(analysis.value, electionDetail.value.entities, candidateData.value || [], partyData.value || [])
+})
 const unit = computed(() => (
   official.value?.unit || unitName(files.value, unitId.value)
 ))
@@ -139,14 +146,14 @@ watch(unit, selected => {
     </section>
     <p v-if="(official || files[0])?.source?.url" class="source-link"><a :href="(official || files[0])?.source?.url" target="_blank" rel="noopener noreferrer">Исходный протокол ↗</a> · Получен {{ (official || files[0])?.source?.retrieved_at?.slice(0, 10) }}</p>
     <div class="section-heading"><div><p class="eyebrow">ПРОТОКОЛ</p><h2>Результаты голосования</h2></div><span>{{ displayRows.length }} {{ displayRows.length === 1 ? 'позиция' : 'позиций' }}</span></div>
-    <ResultTable :party-only="isNationalCandidate" :rows="displayRows" :valid="total.turnout.valid" :election-id="electionId" :unit-id="unitId" />
+    <ResultTable :party-only="isPartySummary" :rows="displayRows" :valid="total.turnout.valid" :election-id="electionId" :unit-id="unitId" />
     <section v-if="!isPrecinct" id="analysis" ref="chartSlot" class="chart-lazy-shell">
       <div v-if="chartError" class="chart-loading" role="alert">Не удалось загрузить графики. <button @click="chartRetry++">Повторить</button></div>
       <div v-else-if="!analysis || chartLoading" class="chart-loading"><span class="loading-spinner" />Загрузка графиков…</div>
       <LazyShpilkinChart
-        v-else-if="electionDetail && displayAnalysis"
-        :analysis="displayAnalysis"
-        :entities="'entities' in displayAnalysis ? displayAnalysis.entities : electionDetail.entities"
+        v-else-if="displayChart"
+        :analysis="displayChart.analysis"
+        :entities="displayChart.entities"
         :candidates="candidateData || []"
         :unit-id="unitId"
       />
