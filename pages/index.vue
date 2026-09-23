@@ -17,6 +17,7 @@ const pageSize = 48
 const current = computed(() => trail.value.at(-1))
 const mapUnits = computed(() => units.value.filter((unit): unit is CatalogUnit => 'kind' in unit))
 const mapRegion = computed(() => current.value?.kind === 'region' ? current.value : undefined)
+const selectedResultUnit = computed(() => current.value?.id || election.value?.national_id || '')
 const normalize = (value: string) => value.toLocaleLowerCase('ru').replaceAll('ё', 'е').trim()
 const searchable = computed(() => units.value.map(unit => ({ unit, text: normalize([unit.name, unit.number || '', 'region' in unit ? unit.region : ''].join(' ')) })))
 const matches = computed(() => {
@@ -76,9 +77,6 @@ function browse(depth: number, unit?: CatalogUnit): void {
 function chooseElection(event: Event): void {
   void router.push({ query: { election: (event.target as HTMLSelectElement).value } })
 }
-function resultLink(id: string): string {
-  return '/result/' + encodeURIComponent(electionId.value) + '/' + encodeURIComponent(id)
-}
 function selectMapUnit(unit: CatalogUnit): void { browse(trail.value.length, unit) }
 const count = (value: number) => value.toLocaleString('ru-RU')
 const ballotLabel = (kind?: string) => kind === 'party_list' ? 'Партийный бюллетень' : kind === 'single_member' ? 'Кандидаты по округам' : ''
@@ -106,14 +104,16 @@ useHead({ title: 'Выборы — найти результаты своего 
           <option v-for="item in data.elections" :key="item.id" :value="item.id">{{ ballotLabel(item.ballot_kind) || item.ballot_title }} · {{ item.date }} · {{ item.name }}</option>
         </select>
         <template v-if="election">
-          <div class="archive-summary"><span><strong>{{ count(election.precinct_count) }}</strong> УИК в архиве</span><span><strong>{{ election.region_count }}</strong> регионов</span><NuxtLink :to="resultLink(election.national_id)">Итоги по стране ↗</NuxtLink></div>
+          <div class="archive-summary"><span><strong>{{ count(election.precinct_count) }}</strong> УИК в архиве</span><span><strong>{{ election.region_count }}</strong> регионов</span><a href="#results">Итоги по стране ↓</a></div>
           <p class="step-label">2. Территория</p>
           <nav class="breadcrumbs" aria-label="Путь к комиссии">
             <button :aria-current="!trail.length ? 'location' : undefined" @click="browse(0)">Все территории</button>
             <template v-for="(unit, index) in trail" :key="unit.id"><span aria-hidden="true">/</span><button :aria-current="index === trail.length - 1 ? 'location' : undefined" @click="browse(index + 1)">{{ unit.name }}</button></template>
           </nav>
-          <div class="territory-heading"><h3>{{ current?.name || 'Территории голосования' }}</h3><NuxtLink v-if="current" :to="resultLink(current.id)">Результаты комиссии ↗</NuxtLink></div>
+          <div class="territory-heading"><h3>{{ current?.name || 'Территории голосования' }}</h3></div>
           <TerritoryMap v-if="!loading && !loadError && (!current || current.kind === 'region') && mapUnits.length" :units="mapUnits" :selected-region="mapRegion" :election-id="electionId" @select="selectMapUnit" />
+          <InlineResults v-if="!loading && selectedResultUnit" id="results" :key="`${electionId}-${selectedResultUnit}`" :election-id="electionId" :unit-id="selectedResultUnit" />
+          <DistrictPrecinctMap v-if="!loading && current?.kind === 'district'" :election-id="electionId" :district="current" />
           <label class="search-label" for="territory-search">{{ current?.kind === 'territorial_commission' ? '3. Найдите участок' : 'Найдите территорию в списке' }}</label>
           <div class="search-field"><span aria-hidden="true">⌕</span><input id="territory-search" v-model="search" type="search" :placeholder="current?.kind === 'territorial_commission' ? 'Номер или название УИК' : 'Название территории или номер округа'" :disabled="loading" autocomplete="off"><kbd aria-hidden="true">{{ matches.length }}</kbd></div>
           <p v-if="loading" class="status" role="status">Загружаем комиссии…</p>
@@ -124,9 +124,9 @@ useHead({ title: 'Выборы — найти результаты своего 
               <article v-for="unit in visible" :key="unit.id" class="territory-card">
                 <template v-if="'kind' in unit">
                   <button class="territory-name" @click="browse(trail.length, unit)"><span>{{ unit.name }}</span><span aria-hidden="true">→</span></button>
-                  <div class="territory-meta"><span>{{ count(unit.count) }} УИК</span><NuxtLink :to="resultLink(unit.id)" :aria-label="'Результаты: ' + unit.name">Результаты ↗</NuxtLink></div>
+                  <div class="territory-meta"><span>{{ count(unit.count) }} УИК</span></div>
                 </template>
-                <NuxtLink v-else class="precinct-link" :to="resultLink(unit.id)"><span><strong>УИК №{{ unit.number || unit.name }}</strong><small>{{ unit.name }} · {{ unit.region }}</small></span><span aria-hidden="true">↗</span></NuxtLink>
+                <NuxtLink v-else class="precinct-link" :to="`/result/${encodeURIComponent(electionId)}/${encodeURIComponent(unit.id)}`"><span><strong>УИК №{{ unit.number || unit.name }}</strong><small>{{ unit.name }} · {{ unit.region }}</small></span><span aria-hidden="true">↗</span></NuxtLink>
               </article>
             </div>
             <p v-else class="status">{{ search ? 'Ничего не найдено. Попробуйте другое название или номер.' : 'В архиве пока нет нижестоящих комиссий.' }}</p>

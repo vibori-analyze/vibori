@@ -15,6 +15,9 @@ const logoFor = (result: AggregatedRow) => partyForEntity(
 )
 const colorFor = (result: AggregatedRow) => logoFor(result)?.color
 const partyNameFor = (result: AggregatedRow) => partyNameForEntity(candidateData.value || [], result)
+const partyForResult = (result: AggregatedRow) => logoFor(result)
+const partyIdFor = (result: AggregatedRow) => partyForResult(result)?.id
+const partyLinkFor = (result: AggregatedRow) => '/entity/' + encodeURIComponent(partyIdFor(result) || '')
 const search = ref('')
 const page = ref(1)
 const pageSize = 25
@@ -47,7 +50,13 @@ watch([search, () => props.rows], () => { page.value = 1 })
                 <PartyLogo :party="logoFor(result)" />
                 <NuxtLink :to="{ path: '/entity/' + encodeURIComponent(result.id), query: { election: electionId, unit: unitId } }" class="entity">{{ result.name }}</NuxtLink>
               </span>
-              <small v-if="result.type === 'candidate' && partyNameFor(result)">{{ partyNameFor(result) }}</small>
+              <small v-if="result.type === 'candidate' && partyNameFor(result)">
+                <NuxtLink
+                  v-if="partyIdFor(result)"
+                  :to="{ path: partyLinkFor(result), query: { election: electionId, unit: unitId } }"
+                >{{ partyNameFor(result) }}</NuxtLink>
+                <template v-else>{{ partyNameFor(result) }}</template>
+              </small>
             </td>
             <td>{{ result.votes.toLocaleString('ru-RU') }}</td>
             <td><b>{{ pct(result.votes, valid).toFixed(2) }}%</b><i :style="{ width: pct(result.votes, valid) + '%', background: colorFor(result) }" /></td>

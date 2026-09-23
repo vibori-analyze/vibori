@@ -79,6 +79,13 @@ const { data: candidateData } = await useAsyncData(
   { deep: false },
 )
 const election = computed(() => official.value?.election || files.value[0]?.election)
+watch(unit, selected => {
+  if (!selected || selected.kind === 'precinct') return
+  const path = [...(selected.administrative_path || []), selected]
+    .filter(entry => entry.kind !== 'national')
+    .map(entry => entry.id)
+  void navigateTo({ path: '/', query: { election: electionId.value, ...(path.length ? { path: path.join('/') } : {}) } })
+}, { immediate: true })
 </script>
 <template>
   <div v-if="error" class="empty">Результаты не найдены.</div>

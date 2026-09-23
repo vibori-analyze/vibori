@@ -76,8 +76,8 @@ const displayedParty = computed(() => {
   const partyName = isParty.value ? entity.value?.name : candidate.value?.party?.name
   return partyFor(partyData.value || [], partyId, partyName)
 })
-const backTarget = computed(() => requestedElection.value && requestedUnit.value
-  ? `/result/${encodeURIComponent(requestedElection.value)}/${encodeURIComponent(requestedUnit.value)}` : '/')
+const backTarget = computed(() => requestedElection.value
+  ? { path: '/', query: { election: requestedElection.value } } : '/')
 const formatDate = (value?: string) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU') : '—'
 </script>
 
@@ -123,7 +123,7 @@ const formatDate = (value?: string) => value ? new Date(`${value}T00:00:00`).toL
   <div v-if="rows.length" class="table-wrap entity-results"><table>
     <thead><tr><th>Голосование</th><th>Голоса</th><th>Доля</th><th>УИК</th></tr></thead>
     <tbody><tr v-for="result in rows" :key="result.election.id">
-      <td><NuxtLink :to="`/result/${result.election.id}/${result.election.national_id}`" class="entity">{{ result.election.name }}</NuxtLink></td>
+      <td><NuxtLink :to="{ path: '/', query: { election: result.election.id } }" class="entity">{{ result.election.name }}</NuxtLink></td>
       <td>{{ result.votes.toLocaleString('ru-RU') }}</td><td><b>{{ result.percent.toFixed(2) }}%</b></td><td>{{ result.units }}</td>
     </tr></tbody>
   </table></div>

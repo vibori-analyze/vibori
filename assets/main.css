@@ -213,7 +213,7 @@ footer { font-size: 18px; letter-spacing: -.04em; }
 .territory-map svg { background: #eff4f2; max-height: 540px; }
 .territory-map path { stroke: #fff; stroke-width: 1.35; }
 .territory-map path:hover, .territory-map path:focus { filter: brightness(.82); stroke: var(--ink); stroke-width: 2; }
-.territory-map .region-outline { fill: #e3eadf; stroke: #8da79c; }
+.territory-map .region-outline { fill: none; stroke: #176b68; stroke-width: 3; }
 .district-marker circle { stroke: #fff; stroke-width: 3; }
 .district-marker:hover circle, .district-marker:focus circle { filter: brightness(.82); stroke: var(--ink); }
 .district-marker text { fill: var(--ink); stroke: white; stroke-width: 3; paint-order: stroke fill; }
@@ -222,6 +222,14 @@ footer { font-size: 18px; letter-spacing: -.04em; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .legend-item i { display: inline-block; width: 15px; height: 15px; border-radius: 4px; border: 1px solid #0002; flex: 0 0 auto; }
 .map-data-note { padding: 0 22px 14px; margin: 0; font-size: 11px; color: var(--muted); }
+.inline-results { scroll-margin-top: 24px; }
+.inline-results .stats { margin-top: 24px; }
+.precinct-map { margin: 24px 0 20px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: white; box-shadow: 0 10px 30px #1835380b; }
+.precinct-map svg { display: block; width: 100%; max-height: 540px; background: #eff4f2; }
+.precinct-map-area { fill: #e6efeb; stroke: #b6cfca; stroke-width: 1.5; }
+.precinct-marker { cursor: pointer; }
+.precinct-marker circle { stroke: white; stroke-width: 1.25; transition: filter .15s, stroke-width .15s; }
+.precinct-marker:hover circle, .precinct-marker:focus circle { filter: brightness(.8); stroke: var(--ink); stroke-width: 2.5; outline: none; }
 .regional-map > p { padding: 10px 22px; }
 .map-attribution { padding: 10px 22px; }
 .search-field { border-color: #b9c9c9; border-radius: 10px; }

@@ -108,7 +108,7 @@ const mapColor = (unit: CatalogUnit) => layer.value.color(metrics.value[unit.id]
 function mapDescription(unit: CatalogUnit): string {
   const metric = metrics.value[unit.id]
   if (!metric) return `${unit.name} · нет данных`
-  return `${unit.name} · ${layer.value.value(metric)} · ${metric.official ? 'официальный итог' : 'расчёт по доступным УИК'}`
+  return `${unit.name} · ${layer.value.value(metric)}`
 }
 const { data } = await useAsyncData('territory-map', () => $fetch<FeatureCollection>(`${useRuntimeConfig().app.baseURL.replace(/\/$/, '')}/data/maps/russia-regions.geojson`))
 const { data: districtCatalog } = await useAsyncData('district-map-numbers', () => $fetch<DistrictCatalog>(`${useRuntimeConfig().app.baseURL.replace(/\/$/, '')}/data/maps/districts-2026.json`))
@@ -143,7 +143,8 @@ function projectedPath(feature: Feature, regional = false): string {
   const minY = regional ? Math.min(...points.map(point => point[1])) : globalSouth
   const maxY = regional ? Math.max(...points.map(point => point[1])) : globalNorth
   const width = Math.max(1, maxX - minX); const height = Math.max(1, maxY - minY)
-  const scale = Math.min(900 / width, 430 / height)
+  const padding = regional ? 18 : 30
+  const scale = Math.min((960 - padding * 2) / width, (480 - padding * 2) / height)
   const offsetX = (960 - width * scale) / 2; const offsetY = (480 - height * scale) / 2
   return projected.map(ring => ring.map((point, index) => `${index ? 'L' : 'M'}${(offsetX + (point[0] - minX) * scale).toFixed(1)},${(offsetY + (maxY - point[1]) * scale).toFixed(1)}`).join(' ') + 'Z').join(' ')
 }
@@ -168,12 +169,12 @@ const positions = computed<Position[]>(() => props.units.map((unit, index) => {
     </svg>
     <div v-else class="regional-map">
       <svg viewBox="0 0 960 480" role="img" :aria-label="`Округа: ${selectedRegion.name}`">
-        <path v-if="selectedFeature" class="region-outline" :d="projectedPath(selectedFeature, true)" fill-rule="evenodd" />
         <g v-for="(unit, index) in units" :key="unit.id" class="district-marker" tabindex="0" role="button" :aria-label="mapDescription(unit)" @click="emit('select', unit)" @keydown.enter="emit('select', unit)" @keydown.space.prevent="emit('select', unit)">
           <circle :cx="positions[index]?.x" :cy="positions[index]?.y" r="25" :style="{ fill: mapColor(unit) }" />
           <text :x="positions[index]?.x" :y="positions[index]?.y + 5">{{ districtNumber(unit, index) }}</text>
           <title>{{ mapDescription(unit) }}</title>
         </g>
+        <path v-if="selectedFeature" class="region-outline" :d="projectedPath(selectedFeature, true)" fill-rule="evenodd" pointer-events="none" />
       </svg>
       <p>Округа показаны схематично: положение маркеров не соответствует их географическим границам. Контур — граница субъекта.</p>
     </div>
@@ -182,7 +183,7 @@ const positions = computed<Position[]>(() => props.units.map((unit, index) => {
       <span v-for="item in legend" :key="item.name" class="legend-item"><i :style="{ background: item.color }" />{{ item.name }}</span>
       <span class="legend-item"><i :style="{ background: missingColor }" />Нет данных</span>
     </div>
-    <p class="map-data-note">{{ layer.note(ballotKind) }} Официальные сводки имеют приоритет; расчёт помечен в подсказке территории.</p>
+    <p class="map-data-note">{{ layer.note(ballotKind) }} Официальные сводки имеют приоритет.</p>
     <p class="map-attribution">Границы субъектов: OpenStreetMap contributors, GADM.</p>
   </section>
 </template>
